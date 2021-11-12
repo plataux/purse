@@ -15,7 +15,7 @@ from uuid import uuid4
 T = TypeVar('T')
 
 
-def _obj_from_raw(value_type: Type[T], raw_item: Union[str, bytes]) -> T | Any:
+def _obj_from_raw(value_type: Type[T], raw_item: str | bytes) -> T | Any:
     if issubclass(value_type, BaseModel):
         return value_type.parse_raw(raw_item)
     elif issubclass(value_type, dict):
