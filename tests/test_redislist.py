@@ -57,4 +57,15 @@ def test_basics(ctx):
 
         assert len(data) == await redlist.len()
 
+        assert data.pop() == await redlist.pop()
+
+        data.insert(2, 'xx')
+        await redlist.insert(2, 'xx')
+
+        data.insert(-3, 'yy')
+        await redlist.insert(-3, 'yy')
+
+        for a, b in zip(data, [x async for x in redlist]):
+            assert a == b
+
     ctx.run(main()).result()
