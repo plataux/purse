@@ -100,7 +100,7 @@ def _list_to_raw(value_type: Type[T], members: Iterable[T]) -> List[str | bytes]
 
 def _dict_to_raw(value_type: Type[T], mapping: Mapping[Any, T]) -> Dict[str, str | bytes]:
     bucket: Dict[str, Union[str, bytes]] = {}
-    for key, value in mapping:
+    for key, value in mapping.items():
         bucket[key] = _obj_to_raw(value_type, value)
     return bucket
 
@@ -252,7 +252,8 @@ class RedisHash(Generic[T], RedisKey):
         self._value_type: Type[T] = value_type
 
     async def set(self, key, value: T):
-        return self.redis.hset(self.rkey, key=key, value=_obj_to_raw(self._value_type, value))
+        return await self.redis.hset(
+            self.rkey, key=key, value=_obj_to_raw(self._value_type, value))
 
     async def update(self, mapping: Mapping[Any, T]):
         return await self.redis.hset(self.rkey, mapping=_dict_to_raw(self._value_type, mapping))
@@ -738,6 +739,13 @@ class RedisList(Generic[T], RedisKey):
 
     async def len(self):
         return await self.redis.llen(self.rkey)
+
+    async def contains(self, value: T) -> bool:
+        idx = await self.redis.lpos(self.rkey, _obj_to_raw(self._value_type, value))
+        return bool(idx)
+
+    async def index(self, value: T) -> int:
+        return await self.redis.lpos(self.rkey, _obj_to_raw(self._value_type, value))
 
     async def slice(self, start: int, stop: int) -> List[T]:
         raw_res = await self.redis.lrange(self.rkey, start, stop - 1)
