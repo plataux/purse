@@ -1,4 +1,8 @@
 ############################################################################
+# Parts of this source file have been copied and/or adapted and/or         #
+# inspired by code at                                                      #
+# https://github.com/brainix/pottery/tree/master/pottery                   #
+############################################################################
 # Copyright 2021 Plataux LLC                                               #
 #                                                                          #
 # Licensed under the Apache License, Version 2.0 (the "License");          #
@@ -13,10 +17,7 @@
 # See the License for the specific language governing permissions and      #
 # limitations under the License.                                           #
 ############################################################################
-# Parts of this source file have been copied and/or adapted and/or         #
-# inspired by code at                                                      #
-# https://github.com/brainix/pottery/tree/master/pottery                   #
-############################################################################
+
 
 from __future__ import annotations
 
