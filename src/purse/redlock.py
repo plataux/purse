@@ -1,6 +1,6 @@
 ############################################################################
 # Parts of this source file have been copied and/or adapted and/or         #
-# inspired by code at                                                      #
+# inspired by source code from:                                            #
 # https://github.com/brainix/pottery/tree/master/pottery                   #
 ############################################################################
 # Copyright 2021 Plataux LLC                                               #
