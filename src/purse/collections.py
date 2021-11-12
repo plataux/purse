@@ -62,7 +62,7 @@ def _list_from_raw(value_type: Type[T], raw_list: List[Any]) -> List[T]:
         return obj_list
 
 
-def _obj_to_raw(value_type: Type[T], value: T) -> Union[str, bytes]:
+def _obj_to_raw(value_type: Type[T], value: T) -> str | bytes:
     if isinstance(value, BaseModel) and isinstance(value, value_type):
         assert isinstance(value, BaseModel)
         return value.json()
@@ -76,14 +76,14 @@ def _obj_to_raw(value_type: Type[T], value: T) -> Union[str, bytes]:
             f"while give Value type {type(value)}")
 
 
-def _list_to_raw(value_type: Type[T], members: Iterable[T]) -> List[Union[str, bytes]]:
+def _list_to_raw(value_type: Type[T], members: Iterable[T]) -> List[str | bytes]:
     bucket: List[Union[str, bytes]] = []
     for value in members:
         bucket.append(_obj_to_raw(value_type, value))
     return bucket
 
 
-def _dict_to_raw(value_type: Type[T], mapping: Mapping[Any, T]) -> Dict[str, Union[str, bytes]]:
+def _dict_to_raw(value_type: Type[T], mapping: Mapping[Any, T]) -> Dict[str, str | bytes]:
     bucket: Dict[str, Union[str, bytes]] = {}
     for key, value in mapping:
         bucket[key] = _obj_to_raw(value_type, value)
@@ -619,8 +619,14 @@ class RedisList(Generic[T]):
     async def append(self, item: T):
         return await self.redis.rpush(self.lkey, _obj_to_raw(self._value_type, item))
 
+    async def appendleft(self, item: T):
+        return await self.redis.lpush(self.lkey, _obj_to_raw(self._value_type, item))
+
     async def extend(self, items: Iterable[T]):
         return await self.redis.rpush(self.lkey, *_list_to_raw(self._value_type, items))
+
+    async def extendleft(self, items: Iterable[T]):
+        return await self.redis.lpush(self.lkey, *_list_to_raw(self._value_type, items))
 
     async def insert(self, index: int, item: T):
 
@@ -665,6 +671,18 @@ class RedisList(Generic[T]):
             raise IndexError("RedisList index out of range")
 
         return _obj_from_raw(self._value_type, res)
+
+    async def pop(self) -> T:
+        res = await self.redis.rpop(self.lkey)
+
+        return _obj_from_raw(self._value_type, res)
+
+    async def popleft(self) -> T:
+        res = await self.redis.lpop(self.lkey)
+        return _obj_from_raw(self._value_type, res)
+
+    async def remove(self, value: T, count: int = 0):
+        return self.redis.lrem(self.lkey, count, _obj_to_raw(self._value_type, value))
 
     async def len(self):
         return await self.redis.llen(self.lkey)

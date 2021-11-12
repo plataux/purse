@@ -1,10 +1,11 @@
 
+
+from purse.collections import RedisSortedSet
+from pydantic import BaseModel
 import pytest
 import aioredis
 import asyncio
 from threading import Thread
-from purse.collections import RedisSortedSet
-from pydantic import BaseModel
 
 
 class Context:
