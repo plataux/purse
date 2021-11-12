@@ -331,30 +331,31 @@ class RedisHash(Generic[T], RedisKey):
 
     def items(self, match=None, batch_hint=None) -> AsyncIterator[Tuple[str, T]]:
         """
-Usage example:
-    incrementally obtain entries from the server.
-    Useful for not overloading either the server or the client when the result set
-    is very large
+        Usage example:
+            incrementally obtain entries from the server.
+            Useful for not overloading either the server or the client when the result set
+            is very large
 
-Usage similar to normal dicts, with the async for construct
+        Usage similar to normal dicts, with the async for construct
 
-.. code-block::
+        .. code-block::
 
-    rc = {}
-    async for k, v in rd.items():
-        rc[k] = v
+            rc = {}
+            async for k, v in rd.items():
+                rc[k] = v
 
-You can also provide a matching string for the keys of the hash
+        You can also provide a matching string for the keys of the hash
 
-.. code-block::
+        .. code-block::
 
-    rc = {}
-    async for k, v in rd.items(match="10*"):
-        rc[k] = v
+            rc = {}
+            async for k, v in rd.items(match="10*"):
+                rc[k] = v
 
-:param match: ``str`` or ``bytes`` pattern, optionally with the globbing ``*`` symbol
-:param batch_hint: ``int`` hint to the server of the minimum number of results in each batch
-:return: AsyncIterator to be used with ``async for`` constructs
+        :param match: ``str`` or ``bytes`` pattern, optionally with the globbing ``*`` symbol
+        :param batch_hint: ``int`` hint to the server of the minimum number of results in
+            each batch
+        :return: AsyncIterator to be used with ``async for`` constructs
         """
 
         raw_it = self.redis.hscan_iter(
@@ -393,6 +394,9 @@ You can also provide a matching string for the keys of the hash
         _item_iter: AsyncIterator[Tuple[str, T]] = _typed_iter()
 
         return _item_iter
+
+    def __aiter__(self) -> AsyncIterator[Tuple[str, T]]:
+        return self.items()
 
 
 class RedisSet(Generic[T], RedisKey):
@@ -462,6 +466,9 @@ class RedisSet(Generic[T], RedisKey):
         _iter: AsyncIterator[T] = _typed_iter()
 
         return _iter
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        return self.values()
 
 
 class RedisSortedSet(Generic[T], RedisKey):
@@ -584,10 +591,12 @@ class RedisSortedSet(Generic[T], RedisKey):
         return result
 
     async def peak_max(self) -> Tuple[T, float]:
-        return list((await self.slice_by_rank(min_rank=0, max_rank=0, descending=True)).items())[0]
+        return list((await self.slice_by_rank(
+            min_rank=0, max_rank=0, descending=True)).items())[0]
 
     async def peak_min(self) -> Tuple[T, float]:
-        return list((await self.slice_by_rank(min_rank=0, max_rank=0, descending=False)).items())[0]
+        return list((await self.slice_by_rank(
+            min_rank=0, max_rank=0, descending=False)).items())[0]
 
     async def blocking_pop_min(self, timeout=0) -> Tuple[T, float]:
         val = await self.redis.bzpopmin(keys=[self.rkey], timeout=timeout)
@@ -640,6 +649,9 @@ class RedisSortedSet(Generic[T], RedisKey):
         _iter: AsyncIterator[Tuple[T, float]] = _typed_iter()
 
         return _iter
+
+    def __aiter__(self) -> AsyncIterator[Tuple[T, float]]:
+        return self.values()
 
 
 class RedisList(Generic[T], RedisKey):
