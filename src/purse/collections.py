@@ -136,7 +136,7 @@ class RedisKeySpace(Generic[T]):
         else:
             return await self.redis.msetnx({self.prefix + k: v for k, v in bucket.items()})
 
-    async def get(self, key) -> Union[T, Any]:
+    async def get(self, key) -> T | None:
         raw_item = await self.redis.get(self.prefix + key)
         return _obj_from_raw(self._value_type, raw_item)
 
@@ -171,7 +171,7 @@ class RedisKeySpace(Generic[T]):
         else:
             return await self.redis.pttl(self.prefix + key)
 
-    async def contains(self, key):
+    async def contains(self, key) -> bool:
         return bool(await self.redis.exists(self.prefix + key))
 
     async def len(self) -> int:
@@ -245,6 +245,21 @@ class RedisKey:
 
 
 class RedisHash(Generic[T], RedisKey):
+    """
+    Similar to the python dict and provides most of its API and functionality,
+    with the following exceptions:
+
+    Doesn't accept None for mapping values.
+
+    Doesn't raise ValueError with incorrect keys, but rather returns None. This design choice
+    is to help minimize networking to check for key existence. For example
+    ``await redis_hash.contains("key")`` to check for key existence can be avoided, and
+    substituted for a simple None check of the return mapping value.
+
+    Doesn't provided the ``popitem()`` method which relies on the fact that Python dicts are
+    ordered.
+
+    """
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey, value_type: Type[T]):
@@ -252,15 +267,56 @@ class RedisHash(Generic[T], RedisKey):
         self._value_type: Type[T] = value_type
 
     async def set(self, key, value: T):
+        """
+        set the hash mapping ``key`` to ``value``
+
+        :param key: ``str`` hash key
+        :param value: hash value of the generic type of this RedisHash initialization
+        :raises ValueError: if the type mismatches the Generic[T] or is None
+
+        """
         return await self.redis.hset(
             self.rkey, key=key, value=_obj_to_raw(self._value_type, value))
 
+    async def get(self, key) -> T | None:
+        """
+        get the mapping value of the given key
+
+        :param key: ``str`` mapping key
+        :return: the value of the generic type T, or None if mapping doesn't exist
+        :raises ValueError: if the value couldn't be deserialized into the Generic[T]
+        """
+        raw_item = await self.redis.hget(self.rkey, key=key)
+        if raw_item is not None:
+            return _obj_from_raw(self._value_type, raw_item)
+        else:
+            return None
+
+    async def setdefault(self, key, value: T) -> T:
+
+        item = await self.get(key)
+
+        if item is not None:
+            return item
+        else:
+            await self.set(key, value)
+            return value
+
+    async def pop(self, key) -> T | None:
+
+        pipe: Any
+        async with self.redis.pipeline() as pipe:
+            pipe.hget(self.rkey, key)
+            pipe.hdel(self.rkey, key)
+            raw_item = (await pipe.execute())[0]
+
+        if raw_item is None:
+            return raw_item
+        else:
+            return _obj_from_raw(self._value_type, raw_item)
+
     async def update(self, mapping: Mapping[Any, T]):
         return await self.redis.hset(self.rkey, mapping=_dict_to_raw(self._value_type, mapping))
-
-    async def get(self, key) -> Union[T, Any]:
-        raw_item = await self.redis.hget(self.rkey, key=key)
-        return _obj_from_raw(self._value_type, raw_item)
 
     async def delete(self, key):
         """
@@ -744,8 +800,9 @@ class RedisList(Generic[T], RedisKey):
         idx = await self.redis.lpos(self.rkey, _obj_to_raw(self._value_type, value))
         return bool(idx)
 
-    async def index(self, value: T) -> int:
-        return await self.redis.lpos(self.rkey, _obj_to_raw(self._value_type, value))
+    async def index(self, value: T) -> int | None:
+        idx: int | None = await self.redis.lpos(self.rkey, _obj_to_raw(self._value_type, value))
+        return idx
 
     async def slice(self, start: int, stop: int) -> List[T]:
         raw_res = await self.redis.lrange(self.rkey, start, stop - 1)
