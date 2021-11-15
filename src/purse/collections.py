@@ -128,6 +128,17 @@ class RedisKeySpace(Generic[T]):
 
         return await self.redis.set(*args, **kwargs)
 
+    async def setdefault(self, key, value: T, ex: int | timedelta | None = None,
+                         px: int | timedelta | None = None,
+                         nx=False, xx=False, keepttl=False) -> T:
+        raw_item = await self.get(key)
+
+        if raw_item is not None:
+            return raw_item
+
+        await self.set(key, value, ex, px, nx, xx, keepttl)
+        return value
+
     async def update(self, mapping: Mapping[Any, T], if_none_exist=False):
         bucket: Dict[str, Union[str, bytes]] = _dict_to_raw(self._value_type, mapping)
 
@@ -138,7 +149,19 @@ class RedisKeySpace(Generic[T]):
 
     async def get(self, key) -> T | None:
         raw_item = await self.redis.get(self.prefix + key)
-        return _obj_from_raw(self._value_type, raw_item)
+        if raw_item is not None:
+            return _obj_from_raw(self._value_type, raw_item)
+        else:
+            return None
+
+    async def pop(self, key) -> T | None:
+        raw_item = await self.get(key)
+
+        if raw_item is None:
+            return None
+
+        await self.delete(key)
+        return raw_item
 
     async def delete(self, key):
         return await self.redis.unlink(self.prefix + key)

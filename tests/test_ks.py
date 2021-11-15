@@ -1,5 +1,5 @@
 
-from purse.collections import RedisHash
+from purse.collections import RedisKeySpace
 from pydantic import BaseModel
 import pytest
 import aioredis
@@ -39,7 +39,7 @@ def test_basics(ctx):
 
     list_key = 'trash:test_hash'
 
-    redis_hash = RedisHash(ctx.rc, list_key, str)
+    redis_hash = RedisKeySpace(ctx.rc, list_key, str)
 
     async def main():
         await redis_hash.clear()
@@ -73,7 +73,6 @@ def test_basics(ctx):
 
 
 def test_models(ctx):
-
     class Plant(BaseModel):
         name: str
         nutrition: float
@@ -93,9 +92,9 @@ def test_models(ctx):
     ]
 
     red_con = aioredis.Redis()
-    redis_key = 'redis_model_hash'
+    redis_key = 'redis_ks_model_hash'
 
-    redis_hash = RedisHash(red_con, redis_key, Plant)
+    redis_hash = RedisKeySpace(red_con, redis_key, Plant)
 
     async def main():
         await redis_hash.clear()
