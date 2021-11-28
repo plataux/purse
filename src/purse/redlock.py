@@ -34,15 +34,30 @@ import random
 from time import time_ns
 
 
+class MilliTimer:
+    __slots__ = ('st',)
+
+    def __init__(self):
+        self.st = time_ns()
+
+    def elapsed(self):
+        """
+        elapsed time in millis
+
+        :return:
+        """
+        return (time_ns() - self.st) / 1000_000
+
+
 class Redlock:
-    _acquired_script: Script = None
-    _extend_script: Script = None
-    _release_script: Script = None
+    _acquired_script = None
+    _extend_script = None
+    _release_script = None
 
     # some constants
 
     CLOCK_DRIFT_FACTOR = 0.01
-    RETRY_DELAY = 200
+    RETRY_DELAY = 200  # milliseconds
     NUM_EXTENSIONS = 3
     AUTO_RELEASE_TIME = 10_000  # milliseconds
 
@@ -64,9 +79,9 @@ class Redlock:
 
     @key.setter
     def key(self, value: str) -> None:
-        self._key = f'redlock:{value}'
+        self._key = value
 
-    def __init__(self, key, masters: List, raise_on_redis_errors=False,
+    def __init__(self, key, masters: List[Redis], raise_on_redis_errors=False,
                  auto_release_time: int = AUTO_RELEASE_TIME,
                  num_extensions: int = NUM_EXTENSIONS,
                  context_manager_blocking: bool = True,
@@ -90,7 +105,10 @@ class Redlock:
 
     def __reg_scripts(self):
         """
-        register LOA scripts with any of the masters, and store them in class fields
+        register LOA scripts with any of the master clients, and store them in class fields
+        It seems that this doesn't actually do any networking, but it does assume that all masters
+        will be the same redis version?
+
         :return:
         """
         if not self.__class__._acquired_script:
@@ -123,26 +141,30 @@ class Redlock:
 
     async def __acquire_masters(self,
                                 *,
-                                raise_on_redis_errors: Optional[bool] = None,
-                                ) -> bool:
+                                raise_on_redis_errors: Optional[bool] = None) -> bool:
+        """
+        attempt to acquire locks at all Registered Redis Masters
+
+        Return True if the lock is successfully set with all Registered masters
+        Return False if the lock was not successfully set with the majority of Redis Masters, or
+        Raise an Exception if ``raise_on_redis_errors`` parameter is set
+
+        :param raise_on_redis_errors:
+        :return:
+        """
         self._uuid = str(uuid4())
         self._extension_num = 0
 
-        ###################################################################
-
-        aws = [self.__acquire_master(m) for m in self.masters]
+        aws = [asyncio.create_task(self.__acquire_master(m)) for m in self.masters]
 
         num_masters_acquired, redis_errors = 0, []
 
-        st = time_ns()
-
-        def elapsed():
-            return (time_ns() - st) / 1000_000
+        timer = MilliTimer()
 
         for aw in asyncio.as_completed(aws):
             try:
                 # the aw.result() is either true or false or raises an exception
-                # in arithmatic, True acts as a 1 and False acts as a 0
+                # in Python arithmetic, True acts as a 1 and False acts as a 0
                 res = await aw
                 num_masters_acquired += res
             except RedisError as error:
@@ -151,7 +173,7 @@ class Redlock:
                 if num_masters_acquired > len(self.masters) // 2:
                     validity_time = self.auto_release_time
                     validity_time -= round(self.__drift())
-                    validity_time -= elapsed()
+                    validity_time -= timer.elapsed()
                     if validity_time > 0:  # pragma: no cover
                         return True
 
@@ -160,9 +182,19 @@ class Redlock:
         self._check_enough_masters_up(raise_on_redis_errors, redis_errors)
         return False
 
-        ############################################################
-
     async def __acquire_master(self, master: Redis) -> bool:
+        """
+
+        Attempt to acquire a lock at the one given Redis Master.
+
+        Return True if the lock is successfully set with the given master.
+        Return False is the lock was not set, because of NX and key already existed (lock was taken)
+        Raise a RedisError otherwise
+
+        :param master:
+        :return: ``bool`` True if successful, False if not
+        :raises RedisError: if there is an (network) error performing the operation
+        """
         acquired = await master.set(
             self.key,
             self._uuid,
@@ -172,6 +204,13 @@ class Redlock:
         return bool(acquired)
 
     async def __acquired_master(self, master: Redis) -> int:
+        """
+        return the lock pTTL in milliseconds for a given master
+        :param master:
+        :return:
+        """
+        assert self._acquired_script is not None
+
         if self._uuid:
             ttl: int = await self._acquired_script(
                 keys=(self.key,),
@@ -183,6 +222,7 @@ class Redlock:
         return ttl
 
     async def __extend_master(self, master: Redis) -> bool:
+        assert self._extend_script is not None
         extended = await self._extend_script(
             keys=(self.key,),
             args=(self._uuid, self.auto_release_time),
@@ -191,6 +231,7 @@ class Redlock:
         return bool(extended)
 
     async def __release_master(self, master: Redis) -> bool:
+        assert self._release_script is not None
         released = await self._release_script(
             keys=(self.key,),
             args=(self._uuid,),
@@ -216,16 +257,22 @@ class Redlock:
                       timeout: float = -1,
                       raise_on_redis_errors: Optional[bool] = None,
                       ) -> bool:
+        """
 
+
+
+        :param blocking: ``bool`` value, True to block or False to immediately abort is lock is taken
+        :param timeout: ``float`` in seconds, or -1 to block indefinitely
+        :param raise_on_redis_errors: raise Redis Exceptions
+
+        :return: True for a successfully acquired lock, False otherwise
+        """
         re = raise_on_redis_errors
 
-        st = time_ns()
-
-        def elapsed():
-            return (time_ns() - st) / 1000_000
+        timer = MilliTimer()
 
         if blocking:
-            while timeout == -1 or ((elapsed() / 1000) < timeout):
+            while (timeout == -1) or ((timer.elapsed() / 1000) < timeout):
                 if await self.__acquire_masters(raise_on_redis_errors=re):
                     return True
                 await asyncio.sleep(random.uniform(0, self.RETRY_DELAY / 1000))
@@ -237,15 +284,19 @@ class Redlock:
         raise ValueError("can't specify a timeout for a non-blocking call")
 
     async def locked(self, *, raise_on_redis_errors: Optional[bool] = None) -> int:
+        """
+        Determine how many millis left for the lock auto release
+        (across all masters) in milliseconds
 
-        st = time_ns()
+        :param raise_on_redis_errors:
+        :return:
+        """
 
-        def elapsed():
-            return (time_ns() - st) / 1000_000
+        timer = MilliTimer()
 
         ttls, redis_errors = [], []
 
-        aws = [self.__acquired_master(m) for m in self.masters]
+        aws = [asyncio.create_task(self.__acquired_master(m)) for m in self.masters]
 
         for aw in asyncio.as_completed(aws):
             try:
@@ -258,7 +309,7 @@ class Redlock:
                     if len(ttls) > len(self.masters) // 2:  # pragma: no cover
                         validity_time = min(ttls)
                         validity_time -= round(self.__drift())
-                        validity_time -= elapsed()
+                        validity_time -= timer.elapsed()
                         return max(validity_time, 0)
 
         self._check_enough_masters_up(raise_on_redis_errors, redis_errors)
@@ -267,9 +318,9 @@ class Redlock:
     async def extend(self, *, raise_on_redis_errors: Optional[bool] = None) -> None:
 
         if self._extension_num >= self.num_extensions:
-            raise RuntimeError(self.key, self.masters)
+            raise RuntimeError("Exceeded Number of Extensions cap")
 
-        aws = [self.__extend_master(m) for m in self.masters]
+        aws = [asyncio.create_task(self.__extend_master(m)) for m in self.masters]
 
         num_masters_extended, redis_errors = 0, []
 
@@ -291,7 +342,7 @@ class Redlock:
 
         num_masters_released, redis_errors = 0, []
 
-        aws = [self.__release_master(m) for m in self.masters]
+        aws = [asyncio.create_task(self.__release_master(m)) for m in self.masters]
 
         for aw in asyncio.as_completed(aws):
             try:
@@ -304,10 +355,9 @@ class Redlock:
                     return
 
         self._check_enough_masters_up(raise_on_redis_errors, redis_errors)
-        raise RuntimeError("ReleaseUnlockedLock")
+        raise RuntimeError("Trying to Release a Lock that wasn't Held")
 
     async def __aenter__(self) -> 'Redlock':
-
         acquired = await self.acquire(
             blocking=self.context_manager_blocking,
             timeout=self.context_manager_timeout,

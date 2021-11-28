@@ -125,3 +125,80 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Redlock
+
+Distributed, None-blocking Lock implementation according to the algorithm and logic described here
+https://redis.io/topics/distlock, and closely resembling the python implementation here
+https://github.com/brainix/pottery/blob/master/pottery/redlock.py.
+
+This none-blocking implementation is particularly efficient and attractive when a real world
+distributed application is using many distributed locks over many Redis Masters,
+to synchronize on many Network Resources simultaneously, due to the very small overhead associated with
+asyncio tasks, and any "waiting" that may need to happen to acquire locks, since all of the above
+is happening efficiently on an event-queue.
+
+This example uses 5 Redis databases on the localhost as the Redlock Masters, to synchronize on
+the access of a RedisList, where multiple tasks are concurrently synchronizing getting, incrementing and appending
+to the last numerical item of that Redis List, with some asyncio delay to simulate real world
+latencies and data processing times.
+
+```python
+import asyncio
+from purse.redlock import Redlock
+from purse.collections import RedisList
+from aioredis import Redis
+from random import random
+
+# The main Redis Store that contains the data that need synchronization
+redis_store = Redis(db=0)
+
+# The Redis Masters for the async Redlock
+# Highly Recommended to be an odd number of masters: typically 1, 3 or 5 masters
+redlock_masters = [Redis(db=x) for x in range(5)]
+
+
+async def do_job(n):
+
+    rlock = Redlock("redlock:list_lock", redlock_masters)
+    rlist = RedisList(redis_store, "redis_list", str)
+
+    for x in range(n):
+        async with rlock:
+            cl = await rlist.len()
+
+            if cl == 0:
+                await rlist.append("0")
+                current_num = 0
+            else:
+                current_num = int(await rlist.getitem(-1))
+
+            # This sleep simulates the processing time of the job - up to 100ms here
+            await asyncio.sleep(0.1 * random())
+
+            # Get the job done, which is add 1 to the last number
+            current_num += 1
+
+            print(f"the task {asyncio.current_task().get_name()} working on item #: {current_num}")
+
+            await rlist.append(str(current_num))
+
+
+async def main():
+    rlist = RedisList(redis_store, "redis_list", str)
+    await rlist.clear()
+
+    # run 10 async threads (or tasks) in parallel, each one to perform 10 increments
+    await asyncio.gather(
+        *[asyncio.create_task(do_job(10)) for _ in range(10)]
+    )
+
+    # should print 0 to 100 in order, which means synchronization has happened
+    async for item in rlist:
+        print(item)
+
+    return "success"
+
+asyncio.run(main())
+```
+
