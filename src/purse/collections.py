@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import timedelta
 
@@ -106,6 +107,21 @@ def _dict_to_raw(value_type: Type[T], mapping: Mapping[Any, T]) -> Dict[str, str
 
 
 class RedisKeySpace(Generic[T]):
+    """
+    A dict-like API to a Redis Key Space with a given key prefix,
+    where values are serialized and stored with Redis "strings" commands.
+
+    This class does not accept None values, and will raise errors if a key is mapped to None.
+
+    The main benefit of this Class compared to RedisHash is key expiration features. This is common
+    in Web Applications where data that is known to remain static for known durations, for example:
+
+    - JWT User Access and Refresh Tokens, that would typically have a predefined expiration timeframes
+    - Client IP Geographic information, would typically change on a weekly or monthly frequency
+
+    Applications must ensure that the prefix used by objects of this class do collide with keys
+    or prefixes used by other objects in the same Redis database
+    """
     __slots__ = ('redis', 'prefix', '_value_type')
 
     def __init__(self, redis: Redis, prefix: str, value_type: Type[T]):
@@ -113,24 +129,50 @@ class RedisKeySpace(Generic[T]):
         self.prefix = prefix
         self._value_type: Type[T] = value_type
 
-    async def set(self, key, value: T, ex: int | timedelta | None = None,
+    async def set(self, key: str, value: T, ex: int | timedelta | None = None,
                   px: int | timedelta | None = None,
                   nx=False, xx=False, keepttl=False):
+        """
+        Set the given key with the given value, with optional expiration time delta in seconds or millis,
+        and other Redis options found here:
 
-        args = [self.prefix + key, _obj_to_raw(self._value_type, value)]
+        https://redis.io/commands/set
 
-        kwargs = {"nx": nx, "xx": xx, "keepttl": keepttl}
+        :param key: A key in unicode or byte string
+        :param value: A Value of the type defined when initializing this object
+        :param ex: Expiration timedelta in seconds
+        :param px: Expiration timedelta in millis
+        :param nx: Only set the key if it does not already exist.
+        :param xx: Only set the key if it already exists.
+        :param keepttl: Retain the time to live associated with the key.
+        :return: True if key was set, False if not
+        """
+        args: Any = [self.prefix + key, _obj_to_raw(self._value_type, value)]
+
+        kwargs: Any = {"nx": nx, "xx": xx, "keepttl": keepttl}
 
         if ex is not None:
             kwargs["ex"] = ex
         if px is not None:
             kwargs["px"] = px
 
-        return await self.redis.set(*args, **kwargs)
+        return bool(await self.redis.set(*args, **kwargs))
 
-    async def setdefault(self, key, value: T, ex: int | timedelta | None = None,
+    async def setdefault(self, key: str, value: T, ex: int | timedelta | None = None,
                          px: int | timedelta | None = None,
                          nx=False, xx=False, keepttl=False) -> T:
+        """
+        Get a mapping if it exists, otherwise set and return the given value with the given config
+
+        :param key: A key in unicode or byte string
+        :param value: A Value of the type defined when initializing this object
+        :param ex: Expiration timedelta in seconds
+        :param px: Expiration timedelta in millis
+        :param nx: Only set the key if it does not already exist.
+        :param xx: Only set the key if it already exists.
+        :param keepttl: Retain the time to live associated with the key.
+        :return: True if key was set, False if not
+        """
         raw_item = await self.get(key)
 
         if raw_item is not None:
@@ -139,22 +181,44 @@ class RedisKeySpace(Generic[T]):
         await self.set(key, value, ex, px, nx, xx, keepttl)
         return value
 
-    async def update(self, mapping: Mapping[Any, T], if_none_exist=False):
+    async def update(self, mapping: Mapping[str, T], if_none_exist=False) -> bool:
+        """
+        update current mappings with given mappings with option to abort if any of the provided
+        keys already exists
+
+        :param mapping: a dict-like mapping of ``str`` keys and ``T`` values
+        :param if_none_exist: bool to abort if any of the provided keys already exists
+        :return: True if mappings where updated, False otherwise
+        """
         bucket: Dict[str, Union[str, bytes]] = _dict_to_raw(self._value_type, mapping)
 
         if not if_none_exist:
-            return await self.redis.mset({self.prefix + k: v for k, v in bucket.items()})
+            return bool(await self.redis.mset({self.prefix + k: v for k, v in bucket.items()}))
         else:
-            return await self.redis.msetnx({self.prefix + k: v for k, v in bucket.items()})
+            return bool(await self.redis.msetnx({self.prefix + k: v for k, v in bucket.items()}))
 
-    async def get(self, key) -> T | None:
+    async def get(self, key: str) -> T | None:
+        """
+        get a mapping. Unlike a Python dict, this method doesn't raise a KeyError if a mapping
+        isn't found. This is useful for reducing the Networking round-trips with the server to check
+        on key existence.
+
+        :param key:
+        :return:
+        """
         raw_item = await self.redis.get(self.prefix + key)
         if raw_item is not None:
             return _obj_from_raw(self._value_type, raw_item)
         else:
             return None
 
-    async def pop(self, key) -> T | None:
+    async def pop(self, key: str) -> T | None:
+        """
+        get and remove key value mapping if it exists, otherwise return None
+
+        :param key: Redis String key
+        :return: value of type ``T``
+        """
         raw_item = await self.get(key)
 
         if raw_item is None:
@@ -163,10 +227,20 @@ class RedisKeySpace(Generic[T]):
         await self.delete(key)
         return raw_item
 
-    async def delete(self, key):
-        return await self.redis.unlink(self.prefix + key)
+    async def delete(self, key: str):
+        """
+        Delete a mapping
 
-    async def clear(self):
+        :param key: a Redis String key
+        """
+        await self.redis.unlink(self.prefix + key)
+
+    async def clear(self) -> int:
+        """
+        Clear all mappings
+
+        :return: total mappings deleted
+        """
 
         batch = []
         batch_size = 100
@@ -188,19 +262,21 @@ class RedisKeySpace(Generic[T]):
 
         return total_deleted
 
-    async def ttl(self, key, millis=False):
-        if not millis:
-            return await self.redis.ttl(self.prefix + key)
-        else:
-            return await self.redis.pttl(self.prefix + key)
+    async def ttl(self, key: str) -> int:
+        res: int = await self.redis.ttl(self.prefix + key)
+        return res
 
-    async def contains(self, key) -> bool:
+    async def pttl(self, key: str) -> int:
+        res: int = await self.redis.pttl(self.prefix + key)
+        return res
+
+    async def contains(self, key: str) -> bool:
         return bool(await self.redis.exists(self.prefix + key))
 
     async def len(self) -> int:
         """
-        This is client side counting of keys, which is more expensive than the len
-        of a RedisHash
+        This is client side counting of keys, which is more expensive than the len of a RedisHash
+        If the Key Space contains tens of thousands of mappings, this method should be avoided if possible
 
         :return:
         """
@@ -208,11 +284,12 @@ class RedisKeySpace(Generic[T]):
         async for _ in self.keys(): count += 1
         return count
 
-    def keys(self, batch_hint=None, with_prefix=False):
+    def keys(self, batch_hint=None, with_prefix=False) -> AsyncIterator[str]:
         if not with_prefix:
-            async def _key_no_prefix():
+            async def _key_no_prefix() -> AsyncIterator[str]:
                 prefix_len = len(self.prefix)
                 async for kx in self.redis.scan_iter(match=f'{self.prefix}*', count=batch_hint):
+                    if isinstance(kx, bytes): kx = kx.decode()
                     yield kx[prefix_len:]
 
             return _key_no_prefix()
@@ -265,6 +342,9 @@ class RedisKey:
 
     async def exists(self):
         return await self.redis.exists(self.rkey)
+
+    async def delete_redis_key(self):
+        await self.redis.delete(self.rkey)
 
 
 class RedisHash(Generic[T], RedisKey):
@@ -558,39 +638,42 @@ class RedisSortedSet(Generic[T], RedisKey):
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
-    async def add(self, members: Dict[T, float], nx=False, xx=False, ch=False):
-        raw_keys = _list_to_raw(self._value_type, members.keys())
-        raw_members: Dict[Any, float] = {k: v for k, v in zip(raw_keys, members.values())}
+    async def add(self, members: List[Tuple[T, float]], nx=False, xx=False, ch=False):
+        raw_members: Dict[Any, float] = {_obj_to_raw(self._value_type, k): v for k, v in members}
         return await self.redis.zadd(self.rkey, raw_members, nx=nx, xx=xx, ch=ch)
 
-    async def increment(self, members: Dict[T, float]) -> Dict[T, float]:
+    async def increment_multi(self, members: List[Tuple[T, float]]) -> List[Tuple[T, float]]:
         cx = len(members)
 
         k: Any
 
         if cx == 1:
-            k, v = list(members.items())[0]
+            k, v = members[0]
             new_score = await self.redis.zincrby(self.rkey, v, _obj_to_raw(self._value_type, k))
-            return {k: new_score}
+            return [(k, new_score)]
 
         elif cx > 1:
-            raw_keys = _list_to_raw(self._value_type, members.keys())
-            raw_members = {k: v for k, v in zip(raw_keys, members.values())}
+            raw_members: Dict[Any, float] = {_obj_to_raw(self._value_type, k): v for k, v in members}
 
             pipe: Any
             async with self.redis.pipeline(transaction=True) as pipe:
                 for k, v in raw_members.items():
                     pipe = pipe.zincrby(self.rkey, v, k)
                 res = await pipe.execute()
-            return {m: v for m, v in zip(members.keys(), res)}
+            return [(m[0], r) for m, r in zip(members, res)]
 
         else:
             raise ValueError("bad members argument")
 
+    async def increment(self, member: Tuple[T, float]) -> Tuple[T, float]:
+        k, v = member
+        new_score = await self.redis.zincrby(self.rkey, v, _obj_to_raw(self._value_type, k))
+        return k, new_score
+
     async def remove(self, *members: T):
         return await self.redis.zrem(self.rkey, *_list_to_raw(self._value_type, members))
 
-    async def score(self, members: List[T]) -> Dict[T, float]:
+    async def score_multi(self, members: List[T]) -> List[Tuple[T, float]]:
         """
         provide the score of a single SortedSet member, or multiple members at once.
 
@@ -603,7 +686,7 @@ class RedisSortedSet(Generic[T], RedisKey):
 
         if len(members) == 1:
             score = await self.redis.zscore(self.rkey, _obj_to_raw(self._value_type, members[0]))
-            return {members[0]: score}
+            return [(members[0], score)]
 
         if len(members) > 1:
             pipe: Any
@@ -611,10 +694,13 @@ class RedisSortedSet(Generic[T], RedisKey):
                 for m in _list_to_raw(self._value_type, members):
                     pipe = pipe.zscore(self.rkey, m)
                 res = await pipe.execute()
-            return {m: v for m, v in zip(members, res)}
-
+            return [(m, v) for m, v in zip(members, res)]
         else:
             raise ValueError("invalid empty members list")
+
+    async def score(self, member: T) -> float:
+        res: float = await self.redis.zscore(self.rkey, _obj_to_raw(self._value_type, member))
+        return res
 
     async def rank(self, member: T, descending=False) -> int:
         if not descending:
@@ -624,18 +710,18 @@ class RedisSortedSet(Generic[T], RedisKey):
         return r
 
     async def slice_by_rank(self, min_rank: int, max_rank: int,
-                            descending=False) -> Dict[T, float]:
+                            descending=False) -> List[Tuple[T, float]]:
 
         raw_result = await self.redis.zrange(
             self.rkey, start=min_rank, end=max_rank,
             desc=descending, withscores=True)
 
-        r1: Dict[T, float] = {_obj_from_raw(self._value_type, k): v for k, v in raw_result}
+        r1: List[Tuple[T, float]] = [(_obj_from_raw(self._value_type, k), v) for k, v in raw_result]
         return r1
 
     async def slice_by_score(self, min_score: float,
                              max_score: float, offset=None, count=None,
-                             descending=False) -> Dict[T, float]:
+                             descending=False) -> List[Tuple[T, float]]:
 
         if not descending:
             raw_result = await self.redis.zrangebyscore(self.rkey, min=min_score, max=max_score,
@@ -647,7 +733,7 @@ class RedisSortedSet(Generic[T], RedisKey):
                                                            start=offset, num=count,
                                                            withscores=True)
 
-        r1: Dict[T, float] = {_obj_from_raw(self._value_type, k): v for k, v in raw_result}
+        r1: List[Tuple[T, float]] = [(_obj_from_raw(self._value_type, k), v) for k, v in raw_result]
         return r1
 
     async def clear(self):
@@ -656,27 +742,25 @@ class RedisSortedSet(Generic[T], RedisKey):
     async def len(self):
         return await self.redis.zcard(self.rkey)
 
-    async def pop_max(self, count=1) -> Dict[T, float]:
+    async def pop_max(self, count=1) -> List[Tuple[T, float]]:
         raw_result: List[Tuple[Any, Any]] = await self.redis.zpopmax(self.rkey, count=count)
-        result: Dict[T, float] = {}
+        result: List[Tuple[T, float]] = []
         for k, v in raw_result:
-            result[_obj_from_raw(self._value_type, k)] = v
+            result.append((_obj_from_raw(self._value_type, k), v))
         return result
 
-    async def pop_min(self, count=1) -> Dict[T, float]:
+    async def pop_min(self, count=1) -> List[Tuple[T, float]]:
         raw_result: List[Tuple[Any, Any]] = await self.redis.zpopmin(self.rkey, count=count)
-        result: Dict[T, float] = {}
+        result: List[Tuple[T, float]] = []
         for k, v in raw_result:
-            result[_obj_from_raw(self._value_type, k)] = v
+            result.append((_obj_from_raw(self._value_type, k), v))
         return result
 
     async def peak_max(self) -> Tuple[T, float]:
-        return list((await self.slice_by_rank(
-            min_rank=0, max_rank=0, descending=True)).items())[0]
+        return (await self.slice_by_rank(min_rank=0, max_rank=0, descending=True))[0]
 
     async def peak_min(self) -> Tuple[T, float]:
-        return list((await self.slice_by_rank(
-            min_rank=0, max_rank=0, descending=False)).items())[0]
+        return (await self.slice_by_rank(min_rank=0, max_rank=0, descending=False))[0]
 
     async def blocking_pop_min(self, timeout=0) -> Tuple[T, float]:
         val = await self.redis.bzpopmin(keys=[self.rkey], timeout=timeout)
@@ -859,3 +943,109 @@ class RedisList(Generic[T], RedisKey):
 
     def __aiter__(self) -> AsyncIterator[T]:
         return self.values()
+
+
+class RedisQueue(Generic[T], RedisKey):
+    """
+    acts as a Python SimpleQueue
+    """
+
+    __slots__ = ('_value_type',)
+
+    def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        super().__init__(redis, rkey)
+        self._value_type: Type[T] = value_type
+
+    async def put(self, item: T):
+        return await self.redis.lpush(self.rkey, _obj_to_raw(self._value_type, item))
+
+    async def get(self, timeout: float = 0) -> T:
+        t: Any = timeout
+        res = await self.redis.brpop(self.rkey, timeout=t)
+
+        if res is None:
+            raise asyncio.QueueEmpty("RedisQueue Empty")
+
+        return _obj_from_raw(self._value_type, res)
+
+    async def get_nowait(self) -> T:
+        res = await self.redis.rpop(self.rkey)
+
+        if res is None:
+            raise asyncio.QueueEmpty("RedisQueue Empty")
+
+        return _obj_from_raw(self._value_type, res)
+
+    async def qsize(self):
+        return await self.redis.llen(self.rkey)
+
+
+class RedisLifoQueue(Generic[T], RedisKey):
+    """
+    acts as a Python LifeQueue
+    """
+
+    __slots__ = ('_value_type',)
+
+    def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        super().__init__(redis, rkey)
+        self._value_type: Type[T] = value_type
+
+    async def put(self, item: T):
+        return await self.redis.rpush(self.rkey, _obj_to_raw(self._value_type, item))
+
+    async def get(self, timeout: float = 0) -> T:
+        t: Any = timeout
+        res = await self.redis.brpop(self.rkey, timeout=t)
+
+        if res is None:
+            raise asyncio.QueueEmpty("RedisQueue Empty")
+
+        return _obj_from_raw(self._value_type, res)
+
+    async def get_nowait(self) -> T:
+        res = await self.redis.rpop(self.rkey)
+
+        if res is None:
+            raise asyncio.QueueEmpty("RedisQueue Empty")
+
+        return _obj_from_raw(self._value_type, res)
+
+    async def qsize(self):
+        return await self.redis.llen(self.rkey)
+
+
+class RedisPriorityQueue(Generic[T], RedisKey):
+    """
+    acts as a Python PriorityQueue
+    """
+
+    __slots__ = ('_value_type',)
+
+    def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        super().__init__(redis, rkey)
+        self._value_type: Type[T] = value_type
+
+    async def put(self, item: Tuple[T, int]):
+        raw = str(_obj_to_raw(self._value_type, item[0]))
+        return await self.redis.zadd(self.rkey, {f"{uuid4()}:{raw}": item[1]})
+
+    async def get(self, timeout: float = 0) -> Tuple[T, int]:
+        t: Any = timeout
+        res = await self.redis.bzpopmin(self.rkey, timeout=t)
+
+        if res is None:
+            raise asyncio.QueueEmpty("RedisQueue Empty")
+
+        return _obj_from_raw(self._value_type, res[1][37:]), int(res[2])
+
+    async def get_nowait(self) -> Tuple[T, int]:
+        res = await self.redis.zpopmin(self.rkey)
+
+        if res is None:
+            raise asyncio.QueueEmpty("RedisQueue Empty")
+
+        return _obj_from_raw(self._value_type, res[1][37:]), int(res[2])
+
+    async def qsize(self):
+        return await self.redis.zcard(self.rkey)

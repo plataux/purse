@@ -1,5 +1,3 @@
-
-
 from purse.collections import RedisSortedSet
 from pydantic import BaseModel
 import pytest
@@ -48,17 +46,17 @@ def test_basics(ctx):
     async def main():
         await rss.clear()
         assert await rss.len() == 0
-        await rss.add(plants)
+        await rss.add([(k, v) for k, v in plants.items()])
         assert await rss.len() == 7
 
         async for k, v in rss.values():
             assert k in plants and plants[k] == v
 
-        k, v = list((await rss.pop_max()).items())[0]
+        k, v = (await rss.pop_max())[0]
 
         assert k == 'broccoli' and v == 12
 
-        k, v = list((await rss.pop_min()).items())[0]
+        k, v = (await rss.pop_min())[0]
 
         assert k == 'lettuce' and v == 3
 
@@ -67,6 +65,51 @@ def test_basics(ctx):
         await rss.clear()
 
         return 0
+
+    num = ctx.run(main()).result()
+
+    assert num == 0
+
+
+def test_non_uniques(ctx):
+    plants = {
+        'lettuce': 3,
+        'carrots': 4,
+        'apples': 5,
+        'bananas': 7,
+        'tomatoes': 8,
+        'bananas': 10,
+        'spinach': 9,
+        'broccoli': 12,
+    }
+
+    key = 'trash:basic'
+
+    rss = RedisSortedSet(ctx.rc, key, str)
+
+    async def main():
+        await rss.clear()
+        assert await rss.len() == 0
+        await rss.add([(k, v) for k, v in plants.items()])
+        assert await rss.len() == 7
+
+        async for k, v in rss.values():
+            assert k in plants and plants[k] == v
+
+        k, v = (await rss.pop_max())[0]
+
+        assert k == 'broccoli' and v == 12
+
+        k, v = (await rss.pop_min())[0]
+
+        assert k == 'lettuce' and v == 3
+
+        assert await rss.len() == 5
+
+        await rss.clear()
+
+        return 0
+
     num = ctx.run(main()).result()
 
     assert num == 0
@@ -77,9 +120,6 @@ def test_models(ctx):
         name: str
         nutrition: float
         tasty: bool = False
-
-        def __hash__(self):
-            return hash(self.json())
 
     plants = [
         Plant(name="apples", nutrition=5, tasty=True),
@@ -100,18 +140,18 @@ def test_models(ctx):
 
         assert await rss.len() == 0
 
-        await rss.add({p: p.nutrition for p in plants})
+        await rss.add([(p, p.nutrition) for p in plants])
 
         assert await rss.len() == len(plants)
 
         p: Plant
 
-        p, s = list((await rss.pop_max()).items())[0]
+        p, s = (await rss.pop_max())[0]
         assert p.name == "broccoli" and s == p.nutrition
 
         assert await rss.len() == len(plants) - 1
 
-        mins = list((await rss.pop_min(count=2)).items())
+        mins = await rss.pop_min(count=2)
 
         p, s = mins[0]
         assert p.name == "bananas" and s == p.nutrition
@@ -124,7 +164,7 @@ def test_models(ctx):
         p, s = await rss.peak_max()
         assert p.name == 'spinach' and s == p.nutrition
 
-        await rss.increment({p: 10})
+        await rss.increment((p, 10))
 
         p, s = await rss.peak_max()
         assert p.name == 'spinach' and s == (p.nutrition + 10)
@@ -156,30 +196,30 @@ def test_models_slices(ctx):
 
     async def main():
         await rss.clear()
-        await rss.add({p: p.nutrition for p in plants})
+        await rss.add([(p, p.nutrition) for p in plants])
 
         res = await rss.slice_by_score(min_score=7, max_score=20, descending=True)
 
-        for p, k in zip(res.keys(), ['spinach', 'tomatoes', 'carrots']):
+        for p, k in zip([r[0] for r in res], ['spinach', 'tomatoes', 'carrots']):
             assert p.name == k
 
         res = await rss.slice_by_score(min_score=7, max_score=20, descending=False)
 
-        for p, k in zip(res.keys(), ['carrots', 'tomatoes', 'spinach']):
+        for p, k in zip([r[0] for r in res], ['carrots', 'tomatoes', 'spinach']):
             assert p.name == k
 
         res = await rss.slice_by_rank(min_rank=0, max_rank=1, descending=True)  # top 2
 
         assert len(res) == 2
 
-        for p, k in zip(res.keys(), ['spinach', 'tomatoes']):
+        for p, k in zip([r[0] for r in res], ['spinach', 'tomatoes']):
             assert p.name == k
 
         res = await rss.slice_by_rank(min_rank=0, max_rank=1, descending=False)  # bottom 2
 
         assert len(res) == 2
 
-        for p, k in zip(res.keys(), ['bananas', 'lettuce']):
+        for p, k in zip([r[0] for r in res], ['bananas', 'lettuce']):
             assert p.name == k
 
     ctx.run(main())
