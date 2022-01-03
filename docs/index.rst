@@ -13,6 +13,8 @@ High Level Asyncio interface to redis
    :maxdepth: 2
    :caption: Contents
 
+   contents/api.rst
+
 
 Indices and tables
 ==================

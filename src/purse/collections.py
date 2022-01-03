@@ -108,19 +108,27 @@ def _dict_to_raw(value_type: Type[T], mapping: Mapping[Any, T]) -> Dict[str, str
 
 class RedisKeySpace(Generic[T]):
     """
-    A dict-like API to a Redis Key Space with a given key prefix,
-    where values are serialized and stored with Redis "strings" commands.
+    A dict-like API to a Redis key space (namespace) based on a  given key prefix,
+    where values are serialized and stored with Redis ``Strings`` commands.
 
-    This class does not accept None values, and will raise errors if a key is mapped to None.
+    https://redis.io/commands#string
+
+    This class does not accept ``None`` values, and will raise errors if a key is set to ``None``.
 
     The main benefit of this Class compared to RedisHash is key expiration features. This is common
-    in Web Applications where data that is known to remain static for known durations, for example:
+    in Web Applications where certain kinds of data is known to remain static for known durations,
+    for example:
 
     - JWT User Access and Refresh Tokens, that would typically have a predefined expiration timeframes
     - Client IP Geographic information, would typically change on a weekly or monthly frequency
 
-    Applications must ensure that the prefix used by objects of this class do collide with keys
+    Applications must ensure that the prefix used by objects of this class does not collide with keys
     or prefixes used by other objects in the same Redis database
+
+    :param redis: an ``aioredis`` client
+    :param prefix: a ``str`` defining the key space. for example ``"app:feature:"``
+    :param value_type: the data type to serialize to and from upon data retrieval and storage, can be ``str``, ``bytes``, ``dict`` or a Pydantic ``BaseModel`` subclass
+
     """
     __slots__ = ('redis', 'prefix', '_value_type')
 
@@ -314,8 +322,14 @@ class RedisKeySpace(Generic[T]):
 
         return _iter
 
+    def __aiter__(self) -> AsyncIterator[Tuple[str, T]]:
+        return self.items()
+
 
 class RedisKey:
+    """
+    Base class for RedisHash, RedisSet, RedisSortedSet, RedisList and all RedisQueue Classes
+    """
     __slots__ = ("rkey", "redis")
 
     def __init__(self, redis: Redis, rkey: str):
@@ -349,27 +363,34 @@ class RedisKey:
 
 class RedisHash(Generic[T], RedisKey):
     """
-    Similar to the python dict and provides most of its API and functionality,
+    API and functionality mostly compatible with the Python dict type,
     with the following exceptions:
 
-    Doesn't accept None for mapping values.
+    #. Doesn't accept ``None`` for mapping values.
 
-    Doesn't raise ValueError with incorrect keys, but rather returns None. This design choice
-    is to help minimize networking to check for key existence. For example
-    ``await redis_hash.contains("key")`` to check for key existence can be avoided, and
-    substituted for a simple None check of the return mapping value.
+    #. Doesn't provide the ``popitem()`` method which relies on the fact that Python dicts are ordered. while redis hash tables are not
 
-    Doesn't provided the ``popitem()`` method which relies on the fact that Python dicts are
-    ordered.
+    #. Doesn't raise ``ValueError`` when accessing unset keys, but rather returns None.
 
+    #. the __aiter()__ method provides an AsyncIterator of (key, value) tuples instead a keys iterator.
+
+    Differences in point 3 and 4 are intended to eliminate or reduce the need to make extra
+    Networking round-trips to check for key existence, or get a mapped values.
     """
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey, value_type: Type[T]):
+        """
+
+
+        :param redis:
+        :param rkey:
+        :param value_type:
+        """
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
-    async def set(self, key, value: T):
+    async def set(self, key: str, value: T):
         """
         set the hash mapping ``key`` to ``value``
 
@@ -381,7 +402,7 @@ class RedisHash(Generic[T], RedisKey):
         return await self.redis.hset(
             self.rkey, key=key, value=_obj_to_raw(self._value_type, value))
 
-    async def get(self, key) -> T | None:
+    async def get(self, key: str) -> T | None:
         """
         get the mapping value of the given key
 
@@ -395,7 +416,7 @@ class RedisHash(Generic[T], RedisKey):
         else:
             return None
 
-    async def setdefault(self, key, value: T) -> T:
+    async def setdefault(self, key: str, value: T) -> T:
 
         item = await self.get(key)
 
@@ -405,7 +426,7 @@ class RedisHash(Generic[T], RedisKey):
             await self.set(key, value)
             return value
 
-    async def pop(self, key) -> T | None:
+    async def pop(self, key: str) -> T | None:
 
         pipe: Any
         async with self.redis.pipeline() as pipe:
@@ -421,7 +442,7 @@ class RedisHash(Generic[T], RedisKey):
     async def update(self, mapping: Mapping[Any, T]):
         return await self.redis.hset(self.rkey, mapping=_dict_to_raw(self._value_type, mapping))
 
-    async def delete(self, key):
+    async def delete(self, key: str):
         """
         delete a hash mapping given the hash key
 
@@ -433,7 +454,7 @@ class RedisHash(Generic[T], RedisKey):
     async def clear(self):
         return await self.redis.delete(self.rkey)
 
-    async def contains(self, key) -> bool:
+    async def contains(self, key: str) -> bool:
         return bool(await self.redis.hexists(self.rkey, key))
 
     async def len(self) -> int:
@@ -445,7 +466,7 @@ class RedisHash(Generic[T], RedisKey):
         loads the entire RedisHash in a python dict.
         This may not be very suitable for a huge collection.
         For very large collections, use ``RedisHash.items()`` to iterate over the
-        hash without busting the server's or the client's RAM
+        hash without overwhelming the server's or the client's RAM
 
         :return: the Redis Hash into a python dict
         """
@@ -556,6 +577,28 @@ class RedisHash(Generic[T], RedisKey):
         return _item_iter
 
     def __aiter__(self) -> AsyncIterator[Tuple[str, T]]:
+        """
+        Unlike a dict, the iterator magic method
+        (which can be obtained with aiter() builtin in Python 3.10) provides an iterator over the
+        key, value tuples instead of the keys alone, to reduce the need to make extra network
+        round-trips to get the corresponding mapped values
+
+        usage would look like
+
+        .. code-block:: python
+
+            async for k, v  in redis_hash:
+                print(k, v)
+
+        which is equivalent to
+
+        .. code-block:: python
+
+            async for k, v  in redis_hash.items():
+                print(k, v)
+
+        :return: an AsyncIterator of tuples: ``(key, value)``
+        """
         return self.items()
 
 
