@@ -108,26 +108,12 @@ def _dict_to_raw(value_type: Type[T], mapping: Mapping[Any, T]) -> Dict[str, str
 
 class RedisKeySpace(Generic[T]):
     """
-    A dict-like API to a Redis key space (namespace) based on a  given key prefix,
-    where values are serialized and stored with Redis ``Strings`` commands.
+    Set up the key prefix for the redis key space, define the object type to serialize to and from,
+    and hold on to Redis client or a connection pool
 
-    https://redis.io/commands#string
-
-    This class does not accept ``None`` values, and will raise errors if a key is set to ``None``.
-
-    The main benefit of this Class compared to RedisHash is key expiration features. This is common
-    in Web Applications where certain kinds of data is known to remain static for known durations,
-    for example:
-
-    - JWT User Access and Refresh Tokens, that would typically have a predefined expiration timeframes
-    - Client IP Geographic information, would typically change on a weekly or monthly frequency
-
-    Applications must ensure that the prefix used by objects of this class does not collide with keys
-    or prefixes used by other objects in the same Redis database
-
-    :param redis: an ``aioredis`` client
+    :param redis: an ``aioredis`` client or connection pool
     :param prefix: a ``str`` defining the key space. for example ``"app:feature:"``
-    :param value_type: the data type to serialize to and from upon data retrieval and storage, can be ``str``, ``bytes``, ``dict`` or a Pydantic ``BaseModel`` subclass
+    :param value_type: can be ``str``, ``bytes``, ``dict`` or a Pydantic ``BaseModel`` subclass
 
     """
     __slots__ = ('redis', 'prefix', '_value_type')
@@ -154,6 +140,8 @@ class RedisKeySpace(Generic[T]):
         :param xx: Only set the key if it already exists.
         :param keepttl: Retain the time to live associated with the key.
         :return: True if key was set, False if not
+        :raises ValueError: if the type mismatches the Generic[T] or is None
+
         """
         args: Any = [self.prefix + key, _obj_to_raw(self._value_type, value)]
 
@@ -170,7 +158,7 @@ class RedisKeySpace(Generic[T]):
                          px: int | timedelta | None = None,
                          nx=False, xx=False, keepttl=False) -> T:
         """
-        Get a mapping if it exists, otherwise set and return the given value with the given config
+        Get a mapping if it exists, otherwise set and return the given value with the given options
 
         :param key: A key in unicode or byte string
         :param value: A Value of the type defined when initializing this object
@@ -179,7 +167,7 @@ class RedisKeySpace(Generic[T]):
         :param nx: Only set the key if it does not already exist.
         :param xx: Only set the key if it already exists.
         :param keepttl: Retain the time to live associated with the key.
-        :return: True if key was set, False if not
+        :return: the provided value ``T`` if mapping did not already exist, or the deserialized value of the existing mapping otherwise
         """
         raw_item = await self.get(key)
 
@@ -195,7 +183,7 @@ class RedisKeySpace(Generic[T]):
         keys already exists
 
         :param mapping: a dict-like mapping of ``str`` keys and ``T`` values
-        :param if_none_exist: bool to abort if any of the provided keys already exists
+        :param if_none_exist: ``bool`` value to abort if any of the provided mappings already exists
         :return: True if mappings where updated, False otherwise
         """
         bucket: Dict[str, Union[str, bytes]] = _dict_to_raw(self._value_type, mapping)
@@ -211,8 +199,9 @@ class RedisKeySpace(Generic[T]):
         isn't found. This is useful for reducing the Networking round-trips with the server to check
         on key existence.
 
-        :param key:
-        :return:
+        :param key: the mapping key ``str`` NOT including the prefix.
+        :return: object value of the generic type ``T``
+        :raises ValueError: if the value couldn't be deserialized into the Generic[T]
         """
         raw_item = await self.redis.get(self.prefix + key)
         if raw_item is not None:
@@ -271,14 +260,59 @@ class RedisKeySpace(Generic[T]):
         return total_deleted
 
     async def ttl(self, key: str) -> int:
+        """
+        Time to Live for the given key in seconds
+
+        :param key:
+        :return: round number of seconds until key expires
+        """
         res: int = await self.redis.ttl(self.prefix + key)
         return res
 
     async def pttl(self, key: str) -> int:
+        """
+        Time to Live for the given key in milliseconds
+
+        :param key:
+        :return: round number of milliseconds until key expires
+        """
         res: int = await self.redis.pttl(self.prefix + key)
         return res
 
+    async def expire(self, key, seconds: int | timedelta):
+        """
+        Set new expiration offset from the current time in seconds
+
+        :param key:
+        :param seconds: ``int`` or ``timedelta`` expiration offset in seconds
+        """
+        return await self.redis.expire(self.prefix + key, seconds)
+
+    async def pexpire(self, key, millis: int | timedelta):
+        """
+        Set new expiration offset from the current time in milliseconds
+
+        :param key:
+        :param millis: ``int`` or ``timedelta`` expiration offset in milliseconds
+        """
+        return await self.redis.pexpire(self.prefix + key, millis)
+
+    async def persist(self, key):
+        """
+        Remove the existing timeout on key, turning the key from volatile
+        (a key with an expire set) to persistent (a key that will never expire as no timeout is associated).
+
+        :param key:
+        """
+        return await self.redis.persist(self.prefix + key)
+
     async def contains(self, key: str) -> bool:
+        """
+        Check if the key mapping if exists
+
+        :param key:
+        :return: ``True`` if the mapping exists, ``False`` otherwise
+        """
         return bool(await self.redis.exists(self.prefix + key))
 
     async def len(self) -> int:
@@ -286,13 +320,21 @@ class RedisKeySpace(Generic[T]):
         This is client side counting of keys, which is more expensive than the len of a RedisHash
         If the Key Space contains tens of thousands of mappings, this method should be avoided if possible
 
-        :return:
+        :return: ``int`` number of mappings in this collection
         """
         count = 0
         async for _ in self.keys(): count += 1
         return count
 
     def keys(self, batch_hint=None, with_prefix=False) -> AsyncIterator[str]:
+        """
+        Return an AsyncIterator of all keys in this collection, with the option to include
+        the Redis key prefix
+
+        :param batch_hint: a batch size hint to the Redis Client
+        :param with_prefix: ``True`` to return prefix + key, ``False`` to return the keys without prefix
+        :return: ``AsyncIterator[str]`` over the collections keys. Can be used with ``async for`` keyword
+        """
         if not with_prefix:
             async def _key_no_prefix() -> AsyncIterator[str]:
                 prefix_len = len(self.prefix)
@@ -305,6 +347,12 @@ class RedisKeySpace(Generic[T]):
             return self.redis.scan_iter(match=f'{self.prefix}*', count=batch_hint)
 
     def items(self, batch_hint=None) -> AsyncIterator[Tuple[str, T]]:
+        """
+        AsyncIterator of (key, value) tuples of this collection
+
+        :param batch_hint:
+        :return: ``AsyncIterator`` of (key, value) tuples of this collection
+        """
         async def _pair_iter():
             async for k in self.keys(batch_hint=batch_hint):
                 yield k, await self.get(k)
@@ -314,6 +362,12 @@ class RedisKeySpace(Generic[T]):
         return _iter
 
     def values(self, batch_hint=None) -> AsyncIterator[T]:
+        """
+        Provide an AsyncIterator of the mapped values in this collection
+
+        :param batch_hint:
+        :return: ``AsyncIterator[T]`` of deserialized values of this collection
+        """
         async def _val_iter():
             async for k, v in self.items(batch_hint=batch_hint):
                 yield v
@@ -323,6 +377,15 @@ class RedisKeySpace(Generic[T]):
         return _iter
 
     def __aiter__(self) -> AsyncIterator[Tuple[str, T]]:
+        """
+        This magic method Provides an AsyncIterator over the (key, value)
+        tuples of the mappings of this collection, unlike a Python dict, which provides an
+        ``Iterator`` over the keys. this method is called implicitly when this collection is
+        directly used with the ``async for`` keyword, and explicitly with the ``aiter()`` builtin
+        Python function in Python 3.10+
+
+        :return: ``AsyncIterator`` of (key, value) tuples of this collection
+        """
         return self.items()
 
 
@@ -341,6 +404,9 @@ class RedisKey:
 
     async def ttl(self):
         return await self.redis.ttl(self.rkey)
+
+    async def pttl(self):
+        return await self.redis.pttl(self.rkey)
 
     async def persist(self):
         return await self.redis.persist(self.rkey)
@@ -363,30 +429,18 @@ class RedisKey:
 
 class RedisHash(Generic[T], RedisKey):
     """
-    API and functionality mostly compatible with the Python dict type,
-    with the following exceptions:
+    Set up and store a Redis Key to be used as a Hash key type,
+    define the object type to serialize to and from,
+    and hold on to Redis client or a connection pool
 
-    #. Doesn't accept ``None`` for mapping values.
+    :param redis: an ``aioredis`` client or connection pool
+    :param rkey: a ``str`` representing the Redis Hash key
+    :param value_type: can be ``str``, ``bytes``, ``dict`` or a Pydantic ``BaseModel`` subclass
 
-    #. Doesn't provide the ``popitem()`` method which relies on the fact that Python dicts are ordered. while redis hash tables are not
-
-    #. Doesn't raise ``ValueError`` when accessing unset keys, but rather returns None.
-
-    #. the __aiter()__ method provides an AsyncIterator of (key, value) tuples instead a keys iterator.
-
-    Differences in point 3 and 4 are intended to eliminate or reduce the need to make extra
-    Networking round-trips to check for key existence, or get a mapped values.
     """
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey, value_type: Type[T]):
-        """
-
-
-        :param redis:
-        :param rkey:
-        :param value_type:
-        """
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -417,7 +471,11 @@ class RedisHash(Generic[T], RedisKey):
             return None
 
     async def setdefault(self, key: str, value: T) -> T:
+        """
+        Get a mapping if it exists, otherwise set and return the given value with the given options
 
+        :return: the provided value ``T`` if mapping did not already exist, or the deserialized value of the existing mapping otherwise
+        """
         item = await self.get(key)
 
         if item is not None:
@@ -427,6 +485,12 @@ class RedisHash(Generic[T], RedisKey):
             return value
 
     async def pop(self, key: str) -> T | None:
+        """
+        get and remove key value mapping if it exists, otherwise return None
+
+        :param key: Redis String key
+        :return: value of type ``T``
+        """
 
         pipe: Any
         async with self.redis.pipeline() as pipe:
@@ -440,6 +504,11 @@ class RedisHash(Generic[T], RedisKey):
             return _obj_from_raw(self._value_type, raw_item)
 
     async def update(self, mapping: Mapping[Any, T]):
+        """
+        Updating the collection with mappings of another dict-like object
+
+        :param mapping: a Python dict
+        """
         return await self.redis.hset(self.rkey, mapping=_dict_to_raw(self._value_type, mapping))
 
     async def delete(self, key: str):
@@ -681,8 +750,12 @@ class RedisSortedSet(Generic[T], RedisKey):
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
-    async def add(self, members: List[Tuple[T, float]], nx=False, xx=False, ch=False):
+    async def add_multi(self, members: List[Tuple[T, float]], nx=False, xx=False, ch=False):
         raw_members: Dict[Any, float] = {_obj_to_raw(self._value_type, k): v for k, v in members}
+        return await self.redis.zadd(self.rkey, raw_members, nx=nx, xx=xx, ch=ch)
+
+    async def add(self, member: Tuple[T, float], nx=False, xx=False, ch=False):
+        raw_members: Dict[Any, float] = {_obj_to_raw(self._value_type, member[0]): member[1]}
         return await self.redis.zadd(self.rkey, raw_members, nx=nx, xx=xx, ch=ch)
 
     async def increment_multi(self, members: List[Tuple[T, float]]) -> List[Tuple[T, float]]:
