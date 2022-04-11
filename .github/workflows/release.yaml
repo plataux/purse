@@ -1,0 +1,53 @@
+
+name: Tag and Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+
+  build_tag_publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v3
+
+      # Setup Poetry
+      - uses: Gr1N/setup-poetry@v7
+        with:
+          poetry-version: 1.1.13
+      - run: poetry --version
+
+      # Build Poetry
+      - name: Build Python package
+        run: poetry build
+
+      # Capture the project version from pyproject.toml
+      - name: get and set version
+        id: vars
+        run: |
+          arr=($(poetry version))
+          echo ::set-output name=version::${arr[1]}
+
+      # Create a Tag,
+      - uses: ncipollo/release-action@v1
+        with:
+          artifacts: "dist/*"
+          draft: false
+          commit: "main"
+          token: ${{ secrets.GITHUB_TOKEN }}
+#          tag: ${{ github.event.inputs.tag }}
+          tag: ${{ steps.vars.outputs.version }}
+
+      # Push to Private Repo with Basic Auth
+      - name: Publish Packages
+        run: |
+          poetry config repositories.private_rep $REPO_URL
+          poetry config http-basic.private_rep $REPO_USER $REPO_PASSWORD
+          poetry publish -r private_rep
+        env:
+          REPO_USER: ${{ secrets.REPO_USER }}
+          REPO_PASSWORD: ${{ secrets.REPO_PASSWORD }}
+          REPO_URL: ${{ secrets.REPO_URL }}
+

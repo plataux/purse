@@ -1,4 +1,45 @@
 
+[tool.poetry]
+name = "purse"
+version = "0.24.0"
+description = "High Level Asyncio interface to redis"
+license = "Apache-2.0"
+authors = ["mk <mk@plataux.com>"]
+maintainers = []
+readme = "README.md"
+homepage = "https://plataux.com"
+repository = "https://github.com/plataux/purse"
+documentation = ""
+keywords = ['key-value',"caching", "messaging"]
+classifiers = [
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent"
+]
+packages = [
+    { include = "purse", from = "src" },
+]
+
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+pydantic = "^1.9"
+cryptography = "^36"
+aioredis = "^2"
+
+[tool.poetry.dev-dependencies]
+flake8 = "^4.0"
+tox = "^3.24"
+pytest = "^6.2"
+pytest-cov = "^3.0"
+mypy = "^0.910"
+sphinx = "^4.2"
+sphinx-rtd-theme = "^1.0"
+recommonmark = "^0.7"
+
 [build-system]
 requires = ["setuptools>=42.0","wheel"]
 build-backend = "setuptools.build_meta"
