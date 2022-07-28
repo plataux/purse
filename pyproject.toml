@@ -1,7 +1,7 @@
 
 [tool.poetry]
 name = "purse"
-version = "0.24.0"
+version = "0.25.0"
 description = "High Level Asyncio interface to redis"
 license = "Apache-2.0"
 authors = ["mk <mk@plataux.com>"]
@@ -25,9 +25,7 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "^3.8"
-
 pydantic = "^1.9"
-cryptography = "^36"
 aioredis = "^2"
 
 [tool.poetry.dev-dependencies]
