@@ -1,26 +1,9 @@
-
 from purse.collections import RedisKeySpace
 from pydantic import BaseModel
 import pytest
-import aioredis
-import asyncio
-from threading import Thread
 
 
-class Context:
-    def __init__(self):
-        self.rc = aioredis.Redis(db=5)
-        self.loop = asyncio.new_event_loop()
-
-        def _loop_thread_target():
-            self.loop.run_forever()
-            self.loop.close()
-
-        self._loop_thread = Thread(target=_loop_thread_target, daemon=True)
-        self._loop_thread.start()
-
-    def run(self, coro) -> asyncio.Future:
-        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+from ctx import Context
 
 
 @pytest.fixture(scope="session")
@@ -91,7 +74,7 @@ def test_models(ctx):
         Plant(name="mangoes", nutrition=6, tasty=True)
     ]
 
-    red_con = aioredis.Redis()
+    red_con = ctx.rc
     redis_key = 'redis_ks_model_hash'
 
     redis_hash = RedisKeySpace(red_con, redis_key, Plant)

@@ -1,25 +1,8 @@
 from purse.collections import RedisSortedSet
 from pydantic import BaseModel
 import pytest
-import aioredis
-import asyncio
-from threading import Thread
 
-
-class Context:
-    def __init__(self):
-        self.rc = aioredis.Redis(db=5)
-        self.loop = asyncio.new_event_loop()
-
-        def _loop_thread_target():
-            self.loop.run_forever()
-            self.loop.close()
-
-        self._loop_thread = Thread(target=_loop_thread_target, daemon=True)
-        self._loop_thread.start()
-
-    def run(self, coro) -> asyncio.Future:
-        return asyncio.run_coroutine_threadsafe(coro, self.loop)
+from ctx import Context
 
 
 @pytest.fixture(scope="session")
@@ -46,7 +29,7 @@ def test_basics(ctx):
     async def main():
         await rss.clear()
         assert await rss.len() == 0
-        await rss.add([(k, v) for k, v in plants.items()])
+        await rss.add_multi([(k, v) for k, v in plants.items()])
         assert await rss.len() == 7
 
         async for k, v in rss.values():
@@ -78,7 +61,7 @@ def test_non_uniques(ctx):
         'apples': 5,
         'bananas': 7,
         'tomatoes': 8,
-        'bananas': 10,
+        'beans': 10,
         'spinach': 9,
         'broccoli': 12,
     }
@@ -90,8 +73,8 @@ def test_non_uniques(ctx):
     async def main():
         await rss.clear()
         assert await rss.len() == 0
-        await rss.add([(k, v) for k, v in plants.items()])
-        assert await rss.len() == 7
+        await rss.add_multi([(k, v) for k, v in plants.items()])
+        assert await rss.len() == len(plants)
 
         async for k, v in rss.values():
             assert k in plants and plants[k] == v
@@ -104,7 +87,7 @@ def test_non_uniques(ctx):
 
         assert k == 'lettuce' and v == 3
 
-        assert await rss.len() == 5
+        assert await rss.len() == 6
 
         await rss.clear()
 
@@ -140,7 +123,7 @@ def test_models(ctx):
 
         assert await rss.len() == 0
 
-        await rss.add([(p, p.nutrition) for p in plants])
+        await rss.add_multi([(p, p.nutrition) for p in plants])
 
         assert await rss.len() == len(plants)
 
@@ -196,7 +179,7 @@ def test_models_slices(ctx):
 
     async def main():
         await rss.clear()
-        await rss.add([(p, p.nutrition) for p in plants])
+        await rss.add_multi([(p, p.nutrition) for p in plants])
 
         res = await rss.slice_by_score(min_score=7, max_score=20, descending=True)
 
