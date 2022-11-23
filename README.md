@@ -17,6 +17,14 @@ a few differences in objectives and implementation detail.
 Optionally, collections in this library use [pydantic](https://github.com/samuelcolvin/pydantic) 
 to serialize, validate, and deserialize Python Models part of all data storage and retrieval operations
 
+# installation
+
+with pip
+
+```bash
+pip install redis-purse
+```
+
 # Basic Usage
 
 ## RedisList
