@@ -1,6 +1,6 @@
 
 [tool.poetry]
-name = "purse"
+name = "redis-purse"
 version = "0.25.0"
 description = "High Level Asyncio interface to redis"
 license = "Apache-2.0"
