@@ -20,7 +20,7 @@ import asyncio
 import json
 from datetime import timedelta
 
-from aioredis import Redis
+from redis.asyncio import Redis
 from typing import Any, Dict, Type, Union, Tuple, Iterable, List
 from typing import TypeVar, Generic
 from collections.abc import Mapping, AsyncIterator
