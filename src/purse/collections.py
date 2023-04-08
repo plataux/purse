@@ -25,6 +25,7 @@ from typing import Any, Dict, Type, Union, Tuple, Iterable, List
 from typing import TypeVar, Generic
 from collections.abc import Mapping, AsyncIterator
 from pydantic import BaseModel
+import msgspec
 
 from uuid import uuid4
 
@@ -34,6 +35,8 @@ T = TypeVar('T')
 def _obj_from_raw(value_type: Type[T], raw_item: str | bytes) -> T | Any:
     if issubclass(value_type, BaseModel):
         return value_type.parse_raw(raw_item)
+    elif issubclass(value_type, msgspec.Struct):
+        return msgspec.msgpack.decode(raw_item, type=value_type)
     elif issubclass(value_type, dict):
         return json.loads(raw_item)
     elif issubclass(value_type, str):
@@ -53,6 +56,11 @@ def _list_from_raw(value_type: Type[T], raw_list: List[Any]) -> List[T]:
     if issubclass(value_type, BaseModel):
         for raw_item in raw_list:
             obj: Any = value_type.parse_raw(raw_item)
+            obj_list.append(obj)
+        return obj_list
+    elif issubclass(value_type, msgspec.Struct):
+        for raw_item in raw_list:
+            obj = msgspec.msgpack.decode(raw_item, type=value_type)
             obj_list.append(obj)
         return obj_list
     elif issubclass(value_type, dict):
@@ -82,6 +90,9 @@ def _obj_to_raw(value_type: Type[T], value: T) -> str | bytes:
     if isinstance(value, BaseModel) and isinstance(value, value_type):
         assert isinstance(value, BaseModel)
         return value.json()
+    elif isinstance(value, msgspec.Struct) and isinstance(value, value_type):
+        assert isinstance(value, msgspec.Struct)
+        return msgspec.msgpack.encode(value)
     elif isinstance(value, dict):
         return json.dumps(value)
     elif isinstance(value, (str, bytes)):
