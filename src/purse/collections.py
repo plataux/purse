@@ -1077,7 +1077,7 @@ class RedisQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        res = await self.redis.brpop(self.rkey, timeout=t)
+        _, res = await self.redis.brpop(self.rkey, timeout=t)
 
         if res is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
@@ -1112,7 +1112,7 @@ class RedisLifoQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        res = await self.redis.brpop(self.rkey, timeout=t)
+        _, res = await self.redis.brpop(self.rkey, timeout=t)
 
         if res is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
