@@ -1,7 +1,6 @@
 from purse.collections import RedisHash
 from pydantic import BaseModel
 import pytest
-import aioredis
 from ctx import Context
 
 
