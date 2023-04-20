@@ -34,14 +34,14 @@ RedisList provides an API that provides most methods and features of the python 
 ```python
 import asyncio
 from purse.collections import RedisList
-import aioredis
+from redis.asyncio import Redis
 
 
 async def main():
     local_list = ['a', 'b', 'c', 'd', 'e', 'f']
 
     # local Redis >= 6.0.x plain connection with default params
-    red_con = aioredis.Redis()
+    red_con = Redis()
     redis_key = 'redis_list'
 
     # The value_type defines the class to serialize to and from
@@ -90,7 +90,7 @@ Provides most of the functionality of the Python ``dict``.
 ```python
 import asyncio
 from purse.collections import RedisHash
-import aioredis
+from redis.asyncio import Redis
 from pydantic import BaseModel
 
 
@@ -101,7 +101,7 @@ async def main():
         healthiness: float
         tasty: bool
 
-    red_con = aioredis.Redis()
+    red_con = Redis()
     redis_key = 'redis_hash'
 
     # This class serializes and deserializes Plant Model objects when storing and retrieving data
@@ -155,7 +155,7 @@ latencies and data processing times.
 import asyncio
 from purse.redlock import Redlock
 from purse.collections import RedisList
-from aioredis import Redis
+from redis.asyncio import Redis
 from random import random
 
 # The main Redis Store that contains the data that need synchronization
