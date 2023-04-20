@@ -20,7 +20,7 @@ import asyncio
 import json
 from datetime import timedelta
 
-from aioredis import Redis
+from redis.asyncio import Redis
 from typing import Any, Dict, Type, Union, Tuple, Iterable, List
 from typing import TypeVar, Generic
 from collections.abc import Mapping, AsyncIterator
@@ -630,7 +630,7 @@ class RedisHash(Generic[T], RedisKey):
                     if isinstance(v3, bytes):
                         yield k3.decode(), v3.decode()
                     else:
-                        yield v3, v3.decode()
+                        yield k3, v3
 
         else:
 
@@ -1077,7 +1077,7 @@ class RedisQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        res = await self.redis.brpop(self.rkey, timeout=t)
+        _, res = await self.redis.brpop(self.rkey, timeout=t)
 
         if res is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
@@ -1112,7 +1112,7 @@ class RedisLifoQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        res = await self.redis.brpop(self.rkey, timeout=t)
+        _, res = await self.redis.brpop(self.rkey, timeout=t)
 
         if res is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
@@ -1156,7 +1156,7 @@ class RedisPriorityQueue(Generic[T], RedisKey):
         return _obj_from_raw(self._value_type, res[1][37:]), int(res[2])
 
     async def get_nowait(self) -> Tuple[T, int]:
-        res = await self.redis.zpopmin(self.rkey)
+        _, res = await self.redis.zpopmin(self.rkey)
 
         if res is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")

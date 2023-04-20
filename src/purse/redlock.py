@@ -24,8 +24,8 @@ from __future__ import annotations
 import contextlib
 from types import TracebackType
 
-from aioredis import Redis, RedisError
-from aioredis.client import Script
+from redis.asyncio import Redis, RedisError
+
 from typing import List, Optional, Literal, Type
 from uuid import uuid4
 import asyncio
