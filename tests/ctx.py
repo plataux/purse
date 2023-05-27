@@ -1,4 +1,4 @@
-import aioredis
+import redis.asyncio as aioredis
 import asyncio
 from threading import Thread
 
@@ -7,7 +7,7 @@ from pydantic import BaseSettings
 
 class RedisSettings(BaseSettings):
     REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 16379
+    REDIS_PORT: int = 6379
 
 
 class Context:
