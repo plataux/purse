@@ -558,6 +558,9 @@ class RedisHash(Generic[T], RedisKey):
         if issubclass(self._value_type, BaseModel):
             for k, v in raw.items():
                 bucket[k.decode()] = self._value_type.parse_raw(v)
+        elif issubclass(self._value_type, msgspec.Struct):
+            for k, v in raw.items():
+                bucket[k.decode()] = msgspec.msgpack.decode(v, type=self._value_type)
         elif issubclass(self._value_type, dict):
             for k, v in raw.items():
                 bucket[k.decode()] = json.loads(v)
