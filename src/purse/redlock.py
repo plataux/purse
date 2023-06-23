@@ -71,7 +71,7 @@ class Redlock:
                  'context_manager_blocking',
                  'context_manager_timeout',
                  '_uuid',
-                 '_extension_num',)
+                 '_current_extension_count',)
 
     @property
     def key(self) -> str:
@@ -87,6 +87,17 @@ class Redlock:
                  context_manager_blocking: bool = True,
                  context_manager_timeout: float = -1,
                  ):
+        """
+        Create a distributed lock object
+
+        :param key:
+        :param masters: a list of redis connection objects
+        :param raise_on_redis_errors:
+        :param auto_release_time: milliseconds to auto-release the lock if not extended
+        :param num_extensions: -1 for infinite extensions
+        :param context_manager_blocking: block if locked
+        :param context_manager_timeout: optional timeout, or -1 for infinite
+        """
         if not context_manager_blocking and context_manager_timeout != -1:
             raise ValueError("can't specify a timeout for a non-blocking call")
 
@@ -99,7 +110,7 @@ class Redlock:
         self.context_manager_blocking = context_manager_blocking
         self.context_manager_timeout = context_manager_timeout
         self._uuid = ''
-        self._extension_num = 0
+        self._current_extension_count = 0
 
         self.__reg_scripts()
 
@@ -153,7 +164,7 @@ class Redlock:
         :return:
         """
         self._uuid = str(uuid4())
-        self._extension_num = 0
+        self._current_extension_count = 0
 
         aws = [asyncio.create_task(self.__acquire_master(m)) for m in self.masters]
 
@@ -317,7 +328,9 @@ class Redlock:
 
     async def extend(self, *, raise_on_redis_errors: Optional[bool] = None) -> None:
 
-        if self._extension_num >= self.num_extensions:
+        if self.num_extensions <= -1:
+            pass
+        elif self._current_extension_count >= self.num_extensions:
             raise RuntimeError("Exceeded Number of Extensions cap")
 
         aws = [asyncio.create_task(self.__extend_master(m)) for m in self.masters]
@@ -332,7 +345,7 @@ class Redlock:
                 redis_errors.append(error)
             else:
                 if num_masters_extended > len(self.masters) // 2:
-                    self._extension_num += 1
+                    self._current_extension_count += 1
                     return
 
         self._check_enough_masters_up(raise_on_redis_errors, redis_errors)
