@@ -13,7 +13,7 @@ class RedisSettings(BaseSettings):
 class Context:
     def __init__(self):
         settings = RedisSettings()
-        self.rc = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=5)
+        self.redis_conn = aioredis.Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, db=5)
         self.loop = asyncio.new_event_loop()
 
         def _loop_thread_target():

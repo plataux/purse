@@ -24,7 +24,7 @@ def test_basics(ctx):
 
     key = 'trash:basic'
 
-    rss = RedisSortedSet(ctx.rc, key, str)
+    rss = RedisSortedSet(ctx.redis_conn, key, str)
 
     async def main():
         await rss.clear()
@@ -68,7 +68,7 @@ def test_non_uniques(ctx):
 
     key = 'trash:basic'
 
-    rss = RedisSortedSet(ctx.rc, key, str)
+    rss = RedisSortedSet(ctx.redis_conn, key, str)
 
     async def main():
         await rss.clear()
@@ -116,7 +116,7 @@ def test_models(ctx):
     ]
 
     key = "trash:models"
-    rss = RedisSortedSet(ctx.rc, key, Plant)
+    rss = RedisSortedSet(ctx.redis_conn, key, Plant)
 
     async def main():
         await rss.clear()
@@ -175,7 +175,7 @@ def test_models_slices(ctx):
     ]
 
     key = "trash:models"
-    rss = RedisSortedSet(ctx.rc, key, Plant)
+    rss = RedisSortedSet(ctx.redis_conn, key, Plant)
 
     async def main():
         await rss.clear()

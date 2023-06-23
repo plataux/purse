@@ -14,7 +14,7 @@ def test_basics(ctx):
 
     list_key = 'trash:test_list_basics'
 
-    redlist = RedisList(ctx.rc, list_key, str)
+    redlist = RedisList(ctx.redis_conn, list_key, str)
 
     async def main():
         await redlist.clear()

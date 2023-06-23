@@ -7,7 +7,7 @@ the usage of Redis as a non-blocking Caching layer, or even as a first-class non
 Influenced and Inspired by the great library [pottery](https://github.com/brainix/pottery), with
 a few differences in objectives and implementation detail.
 
-* ``purse`` is strictly an Async-IO library that utilizes the excellent Python Redis driver library [aioredis](https://github.com/aio-libs/aioredis-py)
+* ``purse`` is strictly an Async-IO library that utilizes the redis library.
 * ``purse`` tries to adhere as much as possible to familiar APIs and idioms used with familiar python structures
   (``dict``, ``set``, ``list`` among others), but deviates from those conventions in many instances:
   * Due to the ``async/await`` nature of the API, it is difficult and sometimes impossible to use python language constructs such as ``myhash["key"] = "value"`` - 

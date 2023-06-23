@@ -20,7 +20,7 @@ def test_basics(ctx):
 
     list_key = 'trash:test_hash'
 
-    redis_hash = RedisHash(ctx.rc, list_key, str)
+    redis_hash = RedisHash(ctx.redis_conn, list_key, str)
 
     async def main():
         await redis_hash.clear()
@@ -72,7 +72,7 @@ def test_models(ctx):
         Plant(name="mangoes", nutrition=6, tasty=True)
     ]
 
-    red_con = ctx.rc
+    red_con = ctx.redis_conn
     redis_key = 'redis_model_hash'
 
     redis_hash = RedisHash(red_con, redis_key, Plant)
