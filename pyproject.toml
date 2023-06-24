@@ -27,6 +27,7 @@ packages = [
 python = ">=3.8,<4"
 pydantic = "^1.10"
 redis = "^4.5"
+msgspec = "^0.14"
 
 [tool.poetry.dev-dependencies]
 flake8 = "^4.0"
