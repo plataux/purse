@@ -1183,7 +1183,7 @@ class RedisPriorityQueue(Generic[T], RedisKey):
         if res is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
-        return _obj_from_raw(self._value_type, res[1][37:]), int(res[2])
+        return _obj_from_raw(self._value_type, output[1][36:]), int(output[2])
 
     async def get_nowait(self) -> Tuple[T, int]:
         _, res = await self.redis.zpopmin(self.rkey)
