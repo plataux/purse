@@ -632,14 +632,16 @@ class RedisHash(Generic[T], RedisKey):
                     else:
                         yield k3, v3
 
-        else:
-
+        elif issubclass(self._value_type, bytes):
             async def _typed_iter():
                 async for k4, v4 in raw_it:
                     if isinstance(v4, str):
                         yield k4.decode(), v4.encode()
                     else:
                         yield k4.decode(), v4
+
+        else:
+            assert False
 
         _item_iter: AsyncIterator[Tuple[str, T]] = _typed_iter()
 
