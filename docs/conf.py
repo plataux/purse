@@ -17,12 +17,11 @@
 
 # -- Project information -----------------------------------------------------
 
-project = 'Purse'
-copyright = '2021, Plataux LLC'
-author = 'Plataux Tech'
+project = 'Redis Purse'
+author = 'MK'
 
 # The full version, including alpha/beta/rc tags
-release = '0.1'
+release = '1.2'
 
 
 # -- General configuration ---------------------------------------------------
