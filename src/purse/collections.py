@@ -119,6 +119,8 @@ class RedisKeySpace(Generic[T]):
     __slots__ = ('redis', 'prefix', '_value_type')
 
     def __init__(self, redis: Redis, prefix: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         self.redis = redis
         self.prefix = prefix
         self._value_type: Type[T] = value_type
@@ -441,6 +443,8 @@ class RedisHash(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -677,6 +681,8 @@ class RedisSet(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -749,6 +755,8 @@ class RedisSortedSet(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -944,6 +952,8 @@ class RedisList(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -1083,6 +1093,8 @@ class RedisQueue(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -1118,6 +1130,8 @@ class RedisLifoQueue(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -1153,6 +1167,8 @@ class RedisPriorityQueue(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
