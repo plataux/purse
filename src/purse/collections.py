@@ -1104,10 +1104,12 @@ class RedisQueue(Generic[T], RedisKey):
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
 
-        if res is None:
+        output = await self.redis.brpop(self.rkey, timeout=t)
+
+        if output is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
-        return _obj_from_raw(self._value_type, res)
+        return _obj_from_raw(self._value_type, output[1])
 
     async def get_nowait(self) -> T:
         res = await self.redis.rpop(self.rkey)
@@ -1139,12 +1141,12 @@ class RedisLifoQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        _, res = await self.redis.brpop(self.rkey, timeout=t)
+        output = await self.redis.brpop(self.rkey, timeout=t)
 
-        if res is None:
+        if output is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
-        return _obj_from_raw(self._value_type, res)
+        return _obj_from_raw(self._value_type, output[1])
 
     async def get_nowait(self) -> T:
         res = await self.redis.rpop(self.rkey)
@@ -1182,9 +1184,9 @@ class RedisPriorityQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> Tuple[T, int]:
         t: Any = timeout
-        res = await self.redis.bzpopmin(self.rkey, timeout=t)
+        output = await self.redis.bzpopmin(self.rkey, timeout=t)
 
-        if res is None:
+        if output is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
         return _obj_from_raw(self._value_type, output[1][36:]), int(output[2])
