@@ -119,6 +119,8 @@ class RedisKeySpace(Generic[T]):
     __slots__ = ('redis', 'prefix', '_value_type')
 
     def __init__(self, redis: Redis, prefix: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         self.redis = redis
         self.prefix = prefix
         self._value_type: Type[T] = value_type
@@ -140,7 +142,7 @@ class RedisKeySpace(Generic[T]):
         :param xx: Only set the key if it already exists.
         :param keepttl: Retain the time to live associated with the key.
         :return: True if key was set, False if not
-        :raises ValueError: if the type mismatches the Generic[T] or is None
+        :raises ValueError: raised the error if the type mismatches the Generic[T] or is None
 
         """
         args: Any = [self.prefix + key, _obj_to_raw(self._value_type, value)]
@@ -300,7 +302,7 @@ class RedisKeySpace(Generic[T]):
     async def persist(self, key):
         """
         Remove the existing timeout on key, turning the key from volatile
-        (a key with an expire set) to persistent (a key that will never expire as no timeout is associated).
+        (a key with an expiration set) to persistent (a key that will never expire as no timeout is associated).
 
         :param key:
         """
@@ -441,6 +443,8 @@ class RedisHash(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -632,14 +636,16 @@ class RedisHash(Generic[T], RedisKey):
                     else:
                         yield k3, v3
 
-        else:
-
+        elif issubclass(self._value_type, bytes):
             async def _typed_iter():
                 async for k4, v4 in raw_it:
                     if isinstance(v4, str):
                         yield k4.decode(), v4.encode()
                     else:
                         yield k4.decode(), v4
+
+        else:
+            assert False
 
         _item_iter: AsyncIterator[Tuple[str, T]] = _typed_iter()
 
@@ -675,6 +681,8 @@ class RedisSet(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -747,6 +755,8 @@ class RedisSortedSet(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -793,7 +803,7 @@ class RedisSortedSet(Generic[T], RedisKey):
         """
         provide the score of a single SortedSet member, or multiple members at once.
 
-        aioredis 2.0 doesn't implement the ZMSCORE command yet, so we invoking them
+        aioredis 2.0 doesn't implement the ZMSCORE command yet, so we invoke them
         in a pipeline instead
 
         :param members:
@@ -942,6 +952,8 @@ class RedisList(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -1032,6 +1044,18 @@ class RedisList(Generic[T], RedisKey):
         return _list_from_raw(self._value_type, raw_res)
 
     def values(self, batch_size: Union[int, None] = 10) -> AsyncIterator[T]:
+        """
+        iterate over the list, yielding the values
+
+        example usage:
+
+        async for value in redis_list.values():
+            print(value)
+
+
+        :param batch_size:
+        :return:
+        """
 
         async def _typed_iter():
             if not batch_size or (list_len := await self.len()) <= batch_size:
@@ -1069,6 +1093,8 @@ class RedisQueue(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -1077,12 +1103,13 @@ class RedisQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        _, res = await self.redis.brpop(self.rkey, timeout=t)
 
-        if res is None:
+        output = await self.redis.brpop(self.rkey, timeout=t)
+
+        if output is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
-        return _obj_from_raw(self._value_type, res)
+        return _obj_from_raw(self._value_type, output[1])
 
     async def get_nowait(self) -> T:
         res = await self.redis.rpop(self.rkey)
@@ -1104,6 +1131,8 @@ class RedisLifoQueue(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
@@ -1112,12 +1141,12 @@ class RedisLifoQueue(Generic[T], RedisKey):
 
     async def get(self, timeout: float = 0) -> T:
         t: Any = timeout
-        _, res = await self.redis.brpop(self.rkey, timeout=t)
+        output = await self.redis.brpop(self.rkey, timeout=t)
 
-        if res is None:
+        if output is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
-        return _obj_from_raw(self._value_type, res)
+        return _obj_from_raw(self._value_type, output[1])
 
     async def get_nowait(self) -> T:
         res = await self.redis.rpop(self.rkey)
@@ -1139,21 +1168,28 @@ class RedisPriorityQueue(Generic[T], RedisKey):
     __slots__ = ('_value_type',)
 
     def __init__(self, redis: Redis, rkey: str, value_type: Type[T]):
+        if value_type not in (str, bytes, dict) and not issubclass(value_type, BaseModel):
+            raise TypeError(f'Invalid value_type {value_type}')
         super().__init__(redis, rkey)
         self._value_type: Type[T] = value_type
 
     async def put(self, item: Tuple[T, int]):
-        raw = str(_obj_to_raw(self._value_type, item[0]))
-        return await self.redis.zadd(self.rkey, {f"{uuid4()}:{raw}": item[1]})
+        raw: str | bytes = _obj_to_raw(self._value_type, item[0])
+
+        _u = str(uuid4())
+
+        _prefix = _u if isinstance(raw, str) else _u.encode()
+
+        return await self.redis.zadd(self.rkey, {_prefix + raw: item[1]})
 
     async def get(self, timeout: float = 0) -> Tuple[T, int]:
         t: Any = timeout
-        res = await self.redis.bzpopmin(self.rkey, timeout=t)
+        output = await self.redis.bzpopmin(self.rkey, timeout=t)
 
-        if res is None:
+        if output is None:
             raise asyncio.QueueEmpty("RedisQueue Empty")
 
-        return _obj_from_raw(self._value_type, res[1][37:]), int(res[2])
+        return _obj_from_raw(self._value_type, output[1][36:]), int(output[2])
 
     async def get_nowait(self) -> Tuple[T, int]:
         _, res = await self.redis.zpopmin(self.rkey)
