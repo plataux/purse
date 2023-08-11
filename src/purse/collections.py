@@ -1034,6 +1034,18 @@ class RedisList(Generic[T], RedisKey):
         return _list_from_raw(self._value_type, raw_res)
 
     def values(self, batch_size: Union[int, None] = 10) -> AsyncIterator[T]:
+        """
+        iterate over the list, yielding the values
+
+        example usage:
+
+        async for value in redis_list.values():
+            print(value)
+
+
+        :param batch_size:
+        :return:
+        """
 
         async def _typed_iter():
             if not batch_size or (list_len := await self.len()) <= batch_size:
