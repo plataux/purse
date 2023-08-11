@@ -1172,8 +1172,13 @@ class RedisPriorityQueue(Generic[T], RedisKey):
         self._value_type: Type[T] = value_type
 
     async def put(self, item: Tuple[T, int]):
-        raw = str(_obj_to_raw(self._value_type, item[0]))
-        return await self.redis.zadd(self.rkey, {f"{uuid4()}:{raw}": item[1]})
+        raw: str | bytes = _obj_to_raw(self._value_type, item[0])
+
+        _u = str(uuid4())
+
+        _prefix = _u if isinstance(raw, str) else _u.encode()
+
+        return await self.redis.zadd(self.rkey, {_prefix + raw: item[1]})
 
     async def get(self, timeout: float = 0) -> Tuple[T, int]:
         t: Any = timeout
