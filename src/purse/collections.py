@@ -142,7 +142,7 @@ class RedisKeySpace(Generic[T]):
         :param xx: Only set the key if it already exists.
         :param keepttl: Retain the time to live associated with the key.
         :return: True if key was set, False if not
-        :raises ValueError: if the type mismatches the Generic[T] or is None
+        :raises ValueError: raised the error if the type mismatches the Generic[T] or is None
 
         """
         args: Any = [self.prefix + key, _obj_to_raw(self._value_type, value)]
@@ -302,7 +302,7 @@ class RedisKeySpace(Generic[T]):
     async def persist(self, key):
         """
         Remove the existing timeout on key, turning the key from volatile
-        (a key with an expire set) to persistent (a key that will never expire as no timeout is associated).
+        (a key with an expiration set) to persistent (a key that will never expire as no timeout is associated).
 
         :param key:
         """
@@ -803,7 +803,7 @@ class RedisSortedSet(Generic[T], RedisKey):
         """
         provide the score of a single SortedSet member, or multiple members at once.
 
-        aioredis 2.0 doesn't implement the ZMSCORE command yet, so we invoking them
+        aioredis 2.0 doesn't implement the ZMSCORE command yet, so we invoke them
         in a pipeline instead
 
         :param members:
