@@ -280,9 +280,9 @@ def test_redis_priority_queue(ctx):
     red_priority_queue['rpq_bytes'] = RedisPriorityQueue(ctx.redis_conn, 'rpq_bytes', bytes)
     red_priority_queue['rpq_model'] = RedisPriorityQueue(ctx.redis_conn, 'rpq_model', Plant)
 
-    plant_data['plants_str'] = [(p.json(), p.nutrition) for p in data]
-    plant_data['plants_dict'] = [(p.dict(), p.nutrition) for p in data]
-    plant_data['plants_bytes'] = [(p.json().encode(), p.nutrition) for p in data]
+    plant_data['plants_str'] = [(p.model_dump_json(), p.nutrition) for p in data]
+    plant_data['plants_dict'] = [(p.model_dump(), p.nutrition) for p in data]
+    plant_data['plants_bytes'] = [(p.model_dump_json().encode(), p.nutrition) for p in data]
     plant_data['plants_model'] = [(p, p.nutrition) for p in data]
 
     rpq_test_data = [
@@ -320,9 +320,9 @@ def test_redis_keyspace(ctx):
     red_hash['rh_bytes'] = RedisKeySpace(ctx.redis_conn, 'rh_bytes_', bytes)
     red_hash['rh_model'] = RedisKeySpace(ctx.redis_conn, 'rh_model_', Plant)
 
-    plant_data['plants_str'] = {p.name: p.json() for p in data}
-    plant_data['plants_dict'] = {p.name: p.dict() for p in data}
-    plant_data['plants_bytes'] = {p.name: p.json().encode() for p in data}
+    plant_data['plants_str'] = {p.name: p.model_dump_json() for p in data}
+    plant_data['plants_dict'] = {p.name: p.model_dump() for p in data}
+    plant_data['plants_bytes'] = {p.name: p.model_dump_json().encode() for p in data}
     plant_data['plants_model'] = {p.name: p for p in data}
 
     rh_test_data = [
