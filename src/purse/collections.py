@@ -33,7 +33,7 @@ T = TypeVar('T')
 
 def _obj_from_raw(value_type: Type[T], raw_item: str | bytes) -> T | Any:
     if issubclass(value_type, BaseModel):
-        return value_type.parse_raw(raw_item)
+        return value_type.model_validate_json(raw_item)
     elif issubclass(value_type, dict):
         return json.loads(raw_item)
     elif issubclass(value_type, str):
@@ -52,7 +52,7 @@ def _list_from_raw(value_type: Type[T], raw_list: List[Any]) -> List[T]:
     obj_list: List[T] = []
     if issubclass(value_type, BaseModel):
         for raw_item in raw_list:
-            obj: Any = value_type.parse_raw(raw_item)
+            obj: Any = value_type.model_validate_json(raw_item)
             obj_list.append(obj)
         return obj_list
     elif issubclass(value_type, dict):
@@ -81,7 +81,7 @@ def _list_from_raw(value_type: Type[T], raw_list: List[Any]) -> List[T]:
 def _obj_to_raw(value_type: Type[T], value: T) -> str | bytes:
     if isinstance(value, BaseModel) and isinstance(value, value_type):
         assert isinstance(value, BaseModel)
-        return value.json()
+        return value.model_dump_json()
     elif isinstance(value, dict):
         return json.dumps(value)
     elif isinstance(value, (str, bytes)):
@@ -550,7 +550,7 @@ class RedisHash(Generic[T], RedisKey):
 
         if issubclass(self._value_type, BaseModel):
             for k, v in raw.items():
-                bucket[k.decode()] = self._value_type.parse_raw(v)
+                bucket[k.decode()] = self._value_type.model_validate_json(v)
         elif issubclass(self._value_type, dict):
             for k, v in raw.items():
                 bucket[k.decode()] = json.loads(v)
@@ -620,7 +620,7 @@ class RedisHash(Generic[T], RedisKey):
 
             async def _typed_iter():
                 async for k1, v1 in raw_it:
-                    yield k1.decode(), model_type.parse_raw(v1)
+                    yield k1.decode(), model_type.model_validate_json(v1)
 
         elif issubclass(self._value_type, dict):
             async def _typed_iter():
@@ -718,7 +718,7 @@ class RedisSet(Generic[T], RedisKey):
 
             async def _typed_iter():
                 async for v1 in raw_it:
-                    yield model_type.parse_raw(v1)
+                    yield model_type.model_validate_json(v1)
 
         elif issubclass(self._value_type, dict):
             async def _typed_iter():
@@ -910,7 +910,7 @@ class RedisSortedSet(Generic[T], RedisKey):
 
             async def _typed_iter():
                 async for v1, s1 in raw_it:
-                    yield model_type.parse_raw(v1), s1
+                    yield model_type.model_validate_json(v1), s1
 
         elif issubclass(value_type, dict):
 

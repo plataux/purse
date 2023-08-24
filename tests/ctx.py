@@ -2,7 +2,7 @@ import redis.asyncio as aioredis
 import asyncio
 from threading import Thread
 
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 
 
 class RedisSettings(BaseSettings):

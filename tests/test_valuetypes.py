@@ -19,7 +19,7 @@ class Plant(BaseModel):
     tasty: bool = False
 
     def __hash__(self):
-        return hash(self.json())
+        return hash(self.model_dump_json())
 
 
 data = [
@@ -42,9 +42,9 @@ def test_redis_hash(ctx):
     red_hash['rh_bytes'] = RedisHash(ctx.redis_conn, 'rh_bytes', bytes)
     red_hash['rh_model'] = RedisHash(ctx.redis_conn, 'rh_model', Plant)
 
-    plant_data['plants_str'] = {p.name: p.json() for p in data}
-    plant_data['plants_dict'] = {p.name: p.dict() for p in data}
-    plant_data['plants_bytes'] = {p.name: p.json().encode() for p in data}
+    plant_data['plants_str'] = {p.name: p.model_dump_json() for p in data}
+    plant_data['plants_dict'] = {p.name: p.model_dump() for p in data}
+    plant_data['plants_bytes'] = {p.name: p.model_dump_json().encode() for p in data}
     plant_data['plants_model'] = {p.name: p for p in data}
 
     rh_test_data = [
@@ -78,9 +78,9 @@ def test_redis_list(ctx):
     red_list['rl_bytes'] = RedisList(ctx.redis_conn, 'rl_bytes', bytes)
     red_list['rl_model'] = RedisList(ctx.redis_conn, 'rl_model', Plant)
 
-    plant_data['plants_str'] = [p.json() for p in data]
-    plant_data['plants_dict'] = [p.dict() for p in data]
-    plant_data['plants_bytes'] = [p.json().encode() for p in data]
+    plant_data['plants_str'] = [p.model_dump_json() for p in data]
+    plant_data['plants_dict'] = [p.model_dump() for p in data]
+    plant_data['plants_bytes'] = [p.model_dump_json().encode() for p in data]
     plant_data['plants_model'] = data
 
     rl_test_data = [
@@ -117,9 +117,9 @@ def test_redis_set(ctx):
     red_set['rs_bytes'] = RedisSet(ctx.redis_conn, 'rs_bytes', bytes)
     red_set['rs_model'] = RedisSet(ctx.redis_conn, 'rs_model', Plant)
 
-    plant_data['plants_str'] = [p.json() for p in data]
-    plant_data['plants_dict'] = [p.dict() for p in data]
-    plant_data['plants_bytes'] = [p.json().encode() for p in data]
+    plant_data['plants_str'] = [p.model_dump_json() for p in data]
+    plant_data['plants_dict'] = [p.model_dump() for p in data]
+    plant_data['plants_bytes'] = [p.model_dump_json().encode() for p in data]
     plant_data['plants_model'] = list(data)
 
     rs_test_data = [
@@ -157,9 +157,9 @@ def test_redis_sorted_set(ctx):
     red_sorted_set['rss_bytes'] = RedisSortedSet(ctx.redis_conn, 'rss_bytes', bytes)
     red_sorted_set['rss_model'] = RedisSortedSet(ctx.redis_conn, 'rss_model', Plant)
 
-    plant_data['plants_str'] = [(p.json(), p.nutrition) for p in data]
-    plant_data['plants_dict'] = [(p.dict(), p.nutrition) for p in data]
-    plant_data['plants_bytes'] = [(p.json().encode(), p.nutrition) for p in data]
+    plant_data['plants_str'] = [(p.model_dump_json(), p.nutrition) for p in data]
+    plant_data['plants_dict'] = [(p.model_dump(), p.nutrition) for p in data]
+    plant_data['plants_bytes'] = [(p.model_dump_json().encode(), p.nutrition) for p in data]
     plant_data['plants_model'] = [(p, p.nutrition) for p in data]
 
 
@@ -200,9 +200,9 @@ def test_redis_queue(ctx):
     red_queue['rq_bytes'] = RedisQueue(ctx.redis_conn, 'rq_bytes', bytes)
     red_queue['rq_model'] = RedisQueue(ctx.redis_conn, 'rq_model', Plant)
 
-    plant_data['plants_str'] = [p.json() for p in data]
-    plant_data['plants_dict'] = [p.dict() for p in data]
-    plant_data['plants_bytes'] = [p.json().encode() for p in data]
+    plant_data['plants_str'] = [p.model_dump_json() for p in data]
+    plant_data['plants_dict'] = [p.model_dump() for p in data]
+    plant_data['plants_bytes'] = [p.model_dump_json().encode() for p in data]
     plant_data['plants_model'] = data
 
     rq_test_data = [
@@ -240,9 +240,9 @@ def test_redis_lifo_queue(ctx):
     red_lifo_queue['rlq_bytes'] = RedisLifoQueue(ctx.redis_conn, 'rlq_bytes', bytes)
     red_lifo_queue['rlq_model'] = RedisLifoQueue(ctx.redis_conn, 'rlq_model', Plant)
 
-    plant_data['plants_str'] = [p.json() for p in data]
-    plant_data['plants_dict'] = [p.dict() for p in data]
-    plant_data['plants_bytes'] = [p.json().encode() for p in data]
+    plant_data['plants_str'] = [p.model_dump_json() for p in data]
+    plant_data['plants_dict'] = [p.model_dump() for p in data]
+    plant_data['plants_bytes'] = [p.model_dump_json().encode() for p in data]
     plant_data['plants_model'] = data
 
     rlq_test_data = [
@@ -280,9 +280,9 @@ def test_redis_priority_queue(ctx):
     red_priority_queue['rpq_bytes'] = RedisPriorityQueue(ctx.redis_conn, 'rpq_bytes', bytes)
     red_priority_queue['rpq_model'] = RedisPriorityQueue(ctx.redis_conn, 'rpq_model', Plant)
 
-    plant_data['plants_str'] = [(p.json(), p.nutrition) for p in data]
-    plant_data['plants_dict'] = [(p.dict(), p.nutrition) for p in data]
-    plant_data['plants_bytes'] = [(p.json().encode(), p.nutrition) for p in data]
+    plant_data['plants_str'] = [(p.model_dump_json(), p.nutrition) for p in data]
+    plant_data['plants_dict'] = [(p.model_dump(), p.nutrition) for p in data]
+    plant_data['plants_bytes'] = [(p.model_dump_json().encode(), p.nutrition) for p in data]
     plant_data['plants_model'] = [(p, p.nutrition) for p in data]
 
     rpq_test_data = [
@@ -320,9 +320,9 @@ def test_redis_keyspace(ctx):
     red_hash['rh_bytes'] = RedisKeySpace(ctx.redis_conn, 'rh_bytes_', bytes)
     red_hash['rh_model'] = RedisKeySpace(ctx.redis_conn, 'rh_model_', Plant)
 
-    plant_data['plants_str'] = {p.name: p.json() for p in data}
-    plant_data['plants_dict'] = {p.name: p.dict() for p in data}
-    plant_data['plants_bytes'] = {p.name: p.json().encode() for p in data}
+    plant_data['plants_str'] = {p.name: p.model_dump_json() for p in data}
+    plant_data['plants_dict'] = {p.name: p.model_dump() for p in data}
+    plant_data['plants_bytes'] = {p.name: p.model_dump_json().encode() for p in data}
     plant_data['plants_model'] = {p.name: p for p in data}
 
     rh_test_data = [
