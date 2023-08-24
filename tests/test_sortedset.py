@@ -162,7 +162,7 @@ def test_models_slices(ctx):
         tasty: bool = False
 
         def __hash__(self):
-            return hash(self.json())
+            return hash(self.model_dump_json())
 
     plants = [
         Plant(name="apples", nutrition=5, tasty=True),
