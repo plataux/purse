@@ -1,7 +1,7 @@
 
 # Purse
 
-High-Level Async-IO Python interface for Redis 6.0.x that provides useful Pythonic abstractions to simplify 
+High-Level Async-IO Python interface for Redis >6.0.x that provides useful Pythonic abstractions to simplify 
 the usage of Redis as a non-blocking Caching layer, or even as a first-class non-blocking datastore.
 
 Influenced and Inspired by the great library [pottery](https://github.com/brainix/pottery), with
